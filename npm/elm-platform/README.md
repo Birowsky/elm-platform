@@ -12,10 +12,10 @@ This gives you the `elm` command. elm-test, elm-review and webpack loaders find 
 
 | Package | Version | Change |
 |---|---|---|
-| `elm/virtual-dom` | 1.900.0 | `Html.Keyed` moves as few kids as possible, so the ones that stay keep focus, scroll position and animations |
-| `elm/virtual-dom` | 1.900.0 | Adds `VirtualDom.lazyShallow` and `VirtualDom.lazyShallowDeep` |
-| `elm/virtual-dom` | 1.900.0 | Adds `VirtualDom.keyedLayers`: keyed kids that leave with a CSS transition, and turn around if they come back before it ends |
-| `elm/virtual-dom` | 1.900.0 | A view or a moved keyed kid that is lazy and gets a new root element no longer leaves the old element behind |
+| `elm/virtual-dom` | 1.900.1 | `Html.Keyed` moves as few kids as possible, so the ones that stay keep focus, scroll position and animations |
+| `elm/virtual-dom` | 1.900.1 | Adds `VirtualDom.lazyShallow` and `VirtualDom.lazyShallowDeep` |
+| `elm/virtual-dom` | 1.900.1 | Adds `VirtualDom.keyedLayers`: keyed kids that leave with a CSS transition, and turn around if they come back before it ends |
+| `elm/virtual-dom` | 1.900.1 | A view or a moved keyed kid that is lazy and gets a new root element no longer leaves the old element behind |
 | compiler | 0.19.3 | `elm diff` and `elm bump` report compatible changes apart from breaking ones, and tell same-named types from different modules apart |
 | compiler | 0.19.3 | A project's first compile no longer fails now and then with `elm-stuff/0.19.3/d.dat: resource busy (file is locked)` |
 | compiler | 0.19.3 | A cache file left empty by an interrupted compile no longer makes `elm` spin forever at full CPU |
