@@ -234,7 +234,7 @@ var _VirtualDom_lazyShallow = F2(function(func, record)
 // case of their own. The extra value is a plain property because adding a kernel
 // field here would renumber the ones after it, and elm-explorations/test
 // hard-codes those.
-var _VirtualDom_lazyFancy = F3(function(func, record, deep)
+var _VirtualDom_lazyShallowDeep = F3(function(func, record, deep)
 {
 	var thunk = _VirtualDom_thunk(_VirtualDom_toShallowRefs(func, record), function() {
 		return A2(func, record, deep);

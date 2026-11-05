@@ -29,37 +29,37 @@ import { built } from '../paths.js'
       })
     })
 
-    test.describe('lazyFancy', () => {
+    test.describe('lazyShallowDeep', () => {
       test('renders a real element on first use', async ({ page }) => {
-        await expect(page.locator('div#fancy')).toBeVisible()
+        await expect(page.locator('div#shallow-deep')).toBeVisible()
         await expect(page.locator('undefined')).toHaveCount(0)
       })
 
       test('skips the view when nothing changed', async ({ page }) => {
         await setStamp(page, 1)
         await tick(page)
-        await expect(page.locator('#fancy-stamp')).toHaveText('0')
+        await expect(page.locator('#shallow-deep-stamp')).toHaveText('0')
       })
 
       test('skips the view when the second argument is rebuilt but equal', async ({ page }) => {
         await setStamp(page, 1)
         await send(page, 'new-equal-deep')
         await tick(page)
-        await expect(page.locator('#fancy-stamp')).toHaveText('0')
+        await expect(page.locator('#shallow-deep-stamp')).toHaveText('0')
       })
 
       test('runs the view when the second argument changes', async ({ page }) => {
         await setStamp(page, 1)
         await send(page, 'change-deep')
-        await expect(page.locator('#fancy-deep')).toHaveText('1')
-        await expect(page.locator('#fancy-stamp')).toHaveText('1')
+        await expect(page.locator('#shallow-deep-value')).toHaveText('1')
+        await expect(page.locator('#shallow-deep-stamp')).toHaveText('1')
       })
 
       test('runs the view when a field of the record changes', async ({ page }) => {
         await setStamp(page, 1)
         await send(page, 'change-field')
-        await expect(page.locator('#fancy-field')).toHaveText('1')
-        await expect(page.locator('#fancy-stamp')).toHaveText('1')
+        await expect(page.locator('#shallow-deep-field')).toHaveText('1')
+        await expect(page.locator('#shallow-deep-stamp')).toHaveText('1')
       })
 
       test('the same function in the second argument is fine', async ({ page }) => {
@@ -81,14 +81,14 @@ import { built } from '../paths.js'
     test('the lazy nodes swap with each other and with plain nodes in the same position', async ({ page }) => {
       const position = page.locator('#position')
       await expect(position).toHaveText('lazy 0')
-      await send(page, 'show-fancy')
-      await expect(position).toHaveText('fancy 0 0')
+      await send(page, 'show-shallow-deep')
+      await expect(position).toHaveText('shallow-deep 0 0')
       await send(page, 'show-shallow')
       await expect(position).toHaveText('shallow 0')
       await send(page, 'show-plain')
       await expect(page.locator('p#position')).toHaveText('plain')
-      await send(page, 'show-fancy')
-      await expect(page.locator('div#position')).toHaveText('fancy 0 0')
+      await send(page, 'show-shallow-deep')
+      await expect(page.locator('div#position')).toHaveText('shallow-deep 0 0')
       await send(page, 'show-lazy')
       await expect(position).toHaveText('lazy 0')
     })
@@ -98,7 +98,7 @@ import { built } from '../paths.js'
       await page.click('#shallow-button')
       await expect(page.locator('#clicks')).toHaveText('1')
       await tick(page)
-      await page.click('#fancy-button')
+      await page.click('#shallow-deep-button')
       await expect(page.locator('#clicks')).toHaveText('2')
     })
 

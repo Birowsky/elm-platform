@@ -22,14 +22,14 @@ suite =
                 Views.shallow
                     |> Query.fromHtml
                     |> Query.has [ Selector.text "shallow" ]
-        , test "text and the second argument inside lazyFancy" <|
+        , test "text and the second argument inside lazyShallowDeep" <|
             \_ ->
-                Views.fancy
+                Views.shallowDeep
                     |> Query.fromHtml
-                    |> Query.has [ Selector.text "fancy", Selector.text "second argument" ]
+                    |> Query.has [ Selector.text "shallow deep", Selector.text "second argument" ]
         , test "tags and classes inside a lazy node" <|
             \_ ->
-                Views.fancy
+                Views.shallowDeep
                     |> Query.fromHtml
                     |> Query.has [ Selector.tag "div", Selector.class "card" ]
         , test "keyed kids that are lazy" <|
@@ -50,9 +50,9 @@ suite =
                     |> Query.find [ Selector.tag "button" ]
                     |> Event.simulate Event.click
                     |> Event.expect Clicked
-        , test "an event inside lazyFancy" <|
+        , test "an event inside lazyShallowDeep" <|
             \_ ->
-                Views.fancy
+                Views.shallowDeep
                     |> Query.fromHtml
                     |> Query.find [ Selector.tag "button" ]
                     |> Event.simulate Event.click

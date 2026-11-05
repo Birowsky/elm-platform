@@ -1,4 +1,4 @@
-module Views exposing (Msg(..), fancy, keyed, mapped, shallow)
+module Views exposing (Msg(..), shallowDeep, keyed, mapped, shallow)
 
 import Html exposing (Html, button, div, li, text)
 import Html.Attributes exposing (class, id)
@@ -18,9 +18,9 @@ shallow =
     VirtualDom.lazyShallow viewShallow { lazyDummy = (), label = "shallow" }
 
 
-fancy : Html Msg
-fancy =
-    VirtualDom.lazyFancy viewFancy { lazyDummy = (), label = "fancy" } { deep = "second argument" }
+shallowDeep : Html Msg
+shallowDeep =
+    VirtualDom.lazyShallowDeep viewShallowDeep { lazyDummy = (), label = "shallow deep" } { deep = "second argument" }
 
 
 keyed : Html Msg
@@ -44,8 +44,8 @@ viewShallow record =
         ]
 
 
-viewFancy : { lazyDummy : (), label : String } -> { deep : String } -> Html Msg
-viewFancy record { deep } =
+viewShallowDeep : { lazyDummy : (), label : String } -> { deep : String } -> Html Msg
+viewShallowDeep record { deep } =
     div [ class "card" ]
         [ text record.label
         , text deep

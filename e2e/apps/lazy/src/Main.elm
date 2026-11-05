@@ -43,7 +43,7 @@ type alias Deep =
 
 type Position
     = ShowLazy
-    | ShowFancy
+    | ShowShallowDeep
     | ShowShallow
     | ShowPlain
 
@@ -127,8 +127,8 @@ updateModel msg model =
         Command "show-lazy" ->
             { model | position = ShowLazy }
 
-        Command "show-fancy" ->
-            { model | position = ShowFancy }
+        Command "show-shallow-deep" ->
+            { model | position = ShowShallowDeep }
 
         Command "show-shallow" ->
             { model | position = ShowShallow }
@@ -159,13 +159,13 @@ view model =
             , field = model.field
             , items = model.items
             }
-        , VirtualDom.lazyFancy viewFancy
+        , VirtualDom.lazyShallowDeep viewShallowDeep
             { lazyDummy = ()
             , external = model.external
             , field = model.field
             }
             model.deep
-        , VirtualDom.lazyFancy viewHandler
+        , VirtualDom.lazyShallowDeep viewHandler
             { lazyDummy = ()
             , external = model.external
             }
@@ -190,13 +190,13 @@ viewShallow record =
         ]
 
 
-viewFancy : { lazyDummy : (), external : Value, field : Int } -> Deep -> Html Msg
-viewFancy record deep =
-    div [ id "fancy" ]
-        [ span [ id "fancy-stamp" ] [ text (toStamp record.external) ]
-        , span [ id "fancy-field" ] [ text (String.fromInt record.field) ]
-        , span [ id "fancy-deep" ] [ text (String.fromInt deep.n) ]
-        , button [ id "fancy-button", onClick Clicked ] [ text "click" ]
+viewShallowDeep : { lazyDummy : (), external : Value, field : Int } -> Deep -> Html Msg
+viewShallowDeep record deep =
+    div [ id "shallow-deep" ]
+        [ span [ id "shallow-deep-stamp" ] [ text (toStamp record.external) ]
+        , span [ id "shallow-deep-field" ] [ text (String.fromInt record.field) ]
+        , span [ id "shallow-deep-value" ] [ text (String.fromInt deep.n) ]
+        , button [ id "shallow-deep-button", onClick Clicked ] [ text "click" ]
         ]
 
 
@@ -214,8 +214,8 @@ viewPosition model =
         ShowLazy ->
             Html.Lazy.lazy viewPositionLazy model.field
 
-        ShowFancy ->
-            VirtualDom.lazyFancy viewPositionFancy { lazyDummy = (), field = model.field } model.deep
+        ShowShallowDeep ->
+            VirtualDom.lazyShallowDeep viewPositionShallowDeep { lazyDummy = (), field = model.field } model.deep
 
         ShowShallow ->
             VirtualDom.lazyShallow viewPositionShallow { lazyDummy = (), field = model.field }
@@ -229,9 +229,9 @@ viewPositionLazy field =
     div [ id "position" ] [ text ("lazy " ++ String.fromInt field) ]
 
 
-viewPositionFancy : { lazyDummy : (), field : Int } -> Deep -> Html Msg
-viewPositionFancy record deep =
-    div [ id "position" ] [ text ("fancy " ++ String.fromInt record.field ++ " " ++ String.fromInt deep.n) ]
+viewPositionShallowDeep : { lazyDummy : (), field : Int } -> Deep -> Html Msg
+viewPositionShallowDeep record deep =
+    div [ id "position" ] [ text ("shallow-deep " ++ String.fromInt record.field ++ " " ++ String.fromInt deep.n) ]
 
 
 viewPositionShallow : { lazyDummy : (), field : Int } -> Html Msg

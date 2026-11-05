@@ -144,7 +144,7 @@ var _VirtualDom_lazyShallow = F2(function(fn, record)
 	return fn(record);
 });
 
-var _VirtualDom_lazyFancy = F3(function(fn, record, deep)
+var _VirtualDom_lazyShallowDeep = F3(function(fn, record, deep)
 {
 	return A2(fn, record, deep);
 });

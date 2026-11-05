@@ -6,7 +6,7 @@ module VirtualDom exposing
   , map, mapAttribute
   , keyedNode, keyedNodeNS
   , lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
-  , lazyShallow, lazyFancy
+  , lazyShallow, lazyShallowDeep
   )
 
 {-| API to the core diffing algorithm. Can serve as a foundation for libraries
@@ -29,7 +29,7 @@ that expose more helper functions for HTML or SVG.
 
 # Lazy Nodes
 @docs lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
-@docs lazyShallow, lazyFancy
+@docs lazyShallow, lazyShallowDeep
 
 -}
 
@@ -368,9 +368,9 @@ rarely changes.
 `(==)` crashes when it reaches two different functions, so keep functions out of
 the second argument.
 -}
-lazyFancy : ({ a | lazyDummy : () } -> b -> Node msg) -> { a | lazyDummy : () } -> b -> Node msg
-lazyFancy =
-  Elm.Kernel.VirtualDom.lazyFancy
+lazyShallowDeep : ({ a | lazyDummy : () } -> b -> Node msg) -> { a | lazyDummy : () } -> b -> Node msg
+lazyShallowDeep =
+  Elm.Kernel.VirtualDom.lazyShallowDeep
 
 
 

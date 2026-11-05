@@ -1,4 +1,4 @@
-// Tests for lazyShallow and lazyFancy, on the real kernel code.
+// Tests for lazyShallow and lazyShallowDeep, on the real kernel code.
 //
 // Every transition also checks that the patched DOM is identical to a fresh
 // render of the new view, because a wrong skip leaves stale DOM behind silently.
@@ -126,80 +126,80 @@ test('lazyShallow: keyed kids that move keep their skip and their DOM node', () 
 });
 
 
-// lazyFancy
+// lazyShallowDeep
 
-test('lazyFancy: renders a real element on first use', () => {
-  const { dom } = start(k.lazyFancy(viewTwo, { a: 1 }, { b: 2 }));
+test('lazyShallowDeep: renders a real element on first use', () => {
+  const { dom } = start(k.lazyShallowDeep(viewTwo, { a: 1 }, { b: 2 }));
   assert.equal(dom.outerHTML, '<div>[{"a":1},{"b":2}]</div>');
   assert.equal(calls, 1);
 });
 
-test('lazyFancy: is drawn when it replaces another kind of node, and replaced in turn', () => {
-  const fancy = go(start(k.node('p', [], [k.text('plain')])), k.lazyFancy(viewTwo, { a: 1 }, { b: 2 }));
-  assert.equal(fancy.dom.outerHTML, '<div>[{"a":1},{"b":2}]</div>');
-  const plain = go(fancy, k.node('p', [], [k.text('plain')]));
+test('lazyShallowDeep: is drawn when it replaces another kind of node, and replaced in turn', () => {
+  const shallowDeep = go(start(k.node('p', [], [k.text('plain')])), k.lazyShallowDeep(viewTwo, { a: 1 }, { b: 2 }));
+  assert.equal(shallowDeep.dom.outerHTML, '<div>[{"a":1},{"b":2}]</div>');
+  const plain = go(shallowDeep, k.node('p', [], [k.text('plain')]));
   assert.equal(plain.dom.outerHTML, '<p>plain</p>');
 });
 
-test('lazyFancy: skips the view when the second argument is equal but not the same', () => {
-  const state = start(k.lazyFancy(viewTwo, { a: 1 }, { b: [1, { c: 2 }] }));
-  const next = go(state, k.lazyFancy(viewTwo, { a: 1 }, { b: [1, { c: 2 }] }));
+test('lazyShallowDeep: skips the view when the second argument is equal but not the same', () => {
+  const state = start(k.lazyShallowDeep(viewTwo, { a: 1 }, { b: [1, { c: 2 }] }));
+  const next = go(state, k.lazyShallowDeep(viewTwo, { a: 1 }, { b: [1, { c: 2 }] }));
   assert.equal(calls, 0);
   assert.equal(next.dom, state.dom);
 });
 
-test('lazyFancy: runs the view when the second argument changes', () => {
-  const next = go(start(k.lazyFancy(viewTwo, { a: 1 }, { b: { c: 1 } })), k.lazyFancy(viewTwo, { a: 1 }, { b: { c: 2 } }));
+test('lazyShallowDeep: runs the view when the second argument changes', () => {
+  const next = go(start(k.lazyShallowDeep(viewTwo, { a: 1 }, { b: { c: 1 } })), k.lazyShallowDeep(viewTwo, { a: 1 }, { b: { c: 2 } }));
   assert.equal(calls, 1);
   assert.equal(next.dom.textContent, '[{"a":1},{"b":{"c":2}}]');
 });
 
-test('lazyFancy: runs the view when a field of the record changes', () => {
-  go(start(k.lazyFancy(viewTwo, { a: 1 }, { b: 2 })), k.lazyFancy(viewTwo, { a: 2 }, { b: 2 }));
+test('lazyShallowDeep: runs the view when a field of the record changes', () => {
+  go(start(k.lazyShallowDeep(viewTwo, { a: 1 }, { b: 2 })), k.lazyShallowDeep(viewTwo, { a: 2 }, { b: 2 }));
   assert.equal(calls, 1);
 });
 
-test('lazyFancy: checks the record by reference even when the second argument is equal', () => {
-  go(start(k.lazyFancy(viewTwo, { list: [1] }, 1)), k.lazyFancy(viewTwo, { list: [1] }, 1));
+test('lazyShallowDeep: checks the record by reference even when the second argument is equal', () => {
+  go(start(k.lazyShallowDeep(viewTwo, { list: [1] }, 1)), k.lazyShallowDeep(viewTwo, { list: [1] }, 1));
   assert.equal(calls, 1);
 });
 
-test('lazyFancy: takes a primitive as the second argument', () => {
-  const same = go(start(k.lazyFancy(viewTwo, { a: 1 }, 'x')), k.lazyFancy(viewTwo, { a: 1 }, 'x'));
+test('lazyShallowDeep: takes a primitive as the second argument', () => {
+  const same = go(start(k.lazyShallowDeep(viewTwo, { a: 1 }, 'x')), k.lazyShallowDeep(viewTwo, { a: 1 }, 'x'));
   assert.equal(calls, 0);
-  go(same, k.lazyFancy(viewTwo, { a: 1 }, 'y'));
+  go(same, k.lazyShallowDeep(viewTwo, { a: 1 }, 'y'));
   assert.equal(calls, 1);
 });
 
-test('lazyFancy: a skip keeps the second argument for the next comparison', () => {
-  const skipped = go(start(k.lazyFancy(viewTwo, { a: 1 }, { b: 1 })), k.lazyFancy(viewTwo, { a: 1 }, { b: 1 }));
-  go(skipped, k.lazyFancy(viewTwo, { a: 1 }, { b: 2 }));
+test('lazyShallowDeep: a skip keeps the second argument for the next comparison', () => {
+  const skipped = go(start(k.lazyShallowDeep(viewTwo, { a: 1 }, { b: 1 })), k.lazyShallowDeep(viewTwo, { a: 1 }, { b: 1 }));
+  go(skipped, k.lazyShallowDeep(viewTwo, { a: 1 }, { b: 2 }));
   assert.equal(calls, 1);
 });
 
-test('lazyFancy: swaps with the other lazy nodes in the same position', () => {
+test('lazyShallowDeep: swaps with the other lazy nodes in the same position', () => {
   const view = viewTwo;
-  const lazy = go(start(k.lazyFancy(view, { a: 1 }, 1)), k.lazy(viewOne, 'x'));
+  const lazy = go(start(k.lazyShallowDeep(view, { a: 1 }, 1)), k.lazy(viewOne, 'x'));
   assert.equal(lazy.dom.textContent, '["x"]');
-  const fancy = go(lazy, k.lazyFancy(view, { a: 1 }, 1));
-  assert.equal(fancy.dom.textContent, '[{"a":1},1]');
-  const shallow = go(fancy, k.lazyShallow(viewOne, { a: 1 }));
+  const shallowDeep = go(lazy, k.lazyShallowDeep(view, { a: 1 }, 1));
+  assert.equal(shallowDeep.dom.textContent, '[{"a":1},1]');
+  const shallow = go(shallowDeep, k.lazyShallow(viewOne, { a: 1 }));
   assert.equal(shallow.dom.textContent, '[{"a":1}]');
 });
 
-test('lazyFancy: the same function in the second argument does not crash', () => {
+test('lazyShallowDeep: the same function in the second argument does not crash', () => {
   const f = () => 1;
-  go(start(k.lazyFancy(viewTwo, { a: 1 }, { f })), k.lazyFancy(viewTwo, { a: 1 }, { f }));
+  go(start(k.lazyShallowDeep(viewTwo, { a: 1 }, { f })), k.lazyShallowDeep(viewTwo, { a: 1 }, { f }));
   assert.equal(calls, 0);
 });
 
-test('lazyFancy: two different functions in the second argument crash, like (==)', () => {
-  const state = start(k.lazyFancy(viewTwo, { a: 1 }, { f: () => 1 }));
-  assert.throws(() => k.diff(state.view, k.lazyFancy(viewTwo, { a: 1 }, { f: () => 1 })), /Debug\.crash 5/);
+test('lazyShallowDeep: two different functions in the second argument crash, like (==)', () => {
+  const state = start(k.lazyShallowDeep(viewTwo, { a: 1 }, { f: () => 1 }));
+  assert.throws(() => k.diff(state.view, k.lazyShallowDeep(viewTwo, { a: 1 }, { f: () => 1 })), /Debug\.crash 5/);
 });
 
-test('lazyFancy: is a plain thunk to everything that looks at the node', () => {
-  assert.equal(k.lazyFancy(viewTwo, { a: 1 }, 1).$, k.lazy(viewOne, 1).$);
+test('lazyShallowDeep: is a plain thunk to everything that looks at the node', () => {
+  assert.equal(k.lazyShallowDeep(viewTwo, { a: 1 }, 1).$, k.lazy(viewOne, 1).$);
   assert.equal(k.lazyShallow(viewOne, { a: 1 }).$, k.lazy(viewOne, 1).$);
 });
 

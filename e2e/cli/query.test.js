@@ -14,5 +14,5 @@ test('elm-test runs against the installed platform and Test.Html reads its nodes
 
 test('the compiled output comes from the patched package', () => {
   const result = spawnSync(elmBin, ['make', 'src/Views.elm', '--output=/dev/null'], { cwd: join(consumer, 'query'), encoding: 'utf8' })
-  assert.equal(result.status, 0, result.stdout + result.stderr) // Views imports VirtualDom.lazyFancy, which stock virtual-dom doesn't have
+  assert.equal(result.status, 0, result.stdout + result.stderr) // Views imports VirtualDom.lazyShallowDeep, which stock virtual-dom doesn't have
 })
