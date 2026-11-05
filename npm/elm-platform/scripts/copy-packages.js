@@ -12,5 +12,5 @@ rmSync(target, { recursive: true, force: true })
 cpSync(source, target, { recursive: true, filter: isShipped })
 
 function isShipped(path) {
-  return !path.split('/').some(part => part === 'tests' || part === 'node_modules')
+  return !path.split('/').some(part => part === 'tests' || part === 'node_modules' || part.startsWith('.'))
 }
