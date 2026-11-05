@@ -360,7 +360,7 @@ initEnv :: IO (Either Exit.RegistryProblem Env)
 initEnv =
   do  mvar  <- Fork.fork_ Http.getManager
       cache <- R.getPackageCache
-      R.withRegistryLock cache $ \writer ->
+      result <- R.withRegistryLock cache $ \writer ->
         do  maybeRegistry <- Registry.read cache
             manager       <- Fork.await mvar
 
@@ -382,6 +382,13 @@ initEnv =
 
                       Left _ ->
                         return $ Right $ Env cache manager Offline cachedRegistry
+
+      traverse addLocalVersions result
+
+
+addLocalVersions :: Env -> IO Env
+addLocalVersions (Env cache manager connection registry) =
+  Env cache manager connection <$> Registry.withLocalVersions cache registry
 
 
 

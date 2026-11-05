@@ -6,6 +6,7 @@ module Deps.Registry
   , fetch
   , update
   , latest
+  , withLocalVersions
   , getVersions
   , getVersions'
   --
@@ -15,9 +16,13 @@ module Deps.Registry
 
 
 import Prelude hiding (read)
-import Control.Monad (liftM2)
+import Control.Monad (filterM, liftM2)
+import qualified Data.ByteString.UTF8 as BS_UTF8
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
+import qualified Data.Maybe as Maybe
+import qualified System.Directory as Dir
+import System.FilePath ((</>))
 
 import qualified Bytes.Decode as D
 import qualified Bytes.Encode as E
@@ -168,6 +173,70 @@ latest writer manager cache =
 
         Nothing ->
           fetch writer manager cache
+
+
+
+-- LOCAL VERSIONS
+
+
+-- A package in the Elm home counts as known even when the Elm website does not
+-- list it, so that a patched package can have a version of its own. Only the
+-- Registry in memory gets these. The one on disk stays a copy of what the website
+-- said, because `_count` is how `update` asks the website what is new.
+--
+withLocalVersions :: R.PackageCache -> Registry -> IO Registry
+withLocalVersions cache (Registry size versions) =
+  do  locals <- readLocalVersions (R.packages cache)
+      return $ Registry size (foldr addLocal versions locals)
+
+
+addLocal :: (Pkg.Name, V.Version) -> Map.Map Pkg.Name KnownVersions -> Map.Map Pkg.Name KnownVersions
+addLocal (name, version) versions =
+  let
+    add maybeKnowns =
+      case maybeKnowns of
+        Just knowns@(KnownVersions v vs)
+          | version == v || elem version vs -> knowns
+          | version > v                     -> KnownVersions version (v:vs)
+          | otherwise                       -> KnownVersions v (List.insertBy (flip compare) version vs)
+
+        Nothing ->
+          KnownVersions version []
+  in
+  Map.alter (Just . add) name versions
+
+
+readLocalVersions :: FilePath -> IO [(Pkg.Name, V.Version)]
+readLocalVersions root =
+  do  authors <- listFolders root
+      names <- concat <$> traverse (\author -> map (author </>) <$> listFolders (root </> author)) authors
+      concat <$> traverse (readVersionsOf root) names
+
+
+readVersionsOf :: FilePath -> FilePath -> IO [(Pkg.Name, V.Version)]
+readVersionsOf root name =
+  do  folders <- listFolders (root </> name)
+      versions <- filterM (isPackage . (\version -> root </> name </> version)) folders
+      Maybe.catMaybes <$> traverse (parseLocal name) versions
+
+
+-- Solving leaves an `elm.json` alone in the folder of every version it looked at,
+-- and only a version with its source can be used without going online.
+--
+isPackage :: FilePath -> IO Bool
+isPackage dir =
+  (&&) <$> File.exists (dir </> "elm.json") <*> Dir.doesDirectoryExist (dir </> "src")
+
+
+parseLocal :: FilePath -> FilePath -> IO (Maybe (Pkg.Name, V.Version))
+parseLocal name version =
+  either (const Nothing) Just <$>
+    P.fromByteString newPkgParser bail (BS_UTF8.fromString (name ++ "@" ++ version))
+
+
+listFolders :: FilePath -> IO [FilePath]
+listFolders dir =
+  filterM (Dir.doesDirectoryExist . (dir </>)) =<< Dir.listDirectory dir
 
 
 

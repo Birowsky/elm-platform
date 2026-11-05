@@ -31,6 +31,7 @@ module Root
   , PackageCache
   , getPackageCache
   , registry
+  , packages
   , package
   , packageRoot
   --
@@ -209,6 +210,11 @@ getPackageCache =
 registry :: PackageCache -> FilePath
 registry (PackageCache dir) =
   dir </> "registry.dat"
+
+
+packages :: PackageCache -> FilePath
+packages (PackageCache dir) =
+  dir
 
 
 package :: PackageCache -> Pkg.Name -> V.Version -> FilePath
