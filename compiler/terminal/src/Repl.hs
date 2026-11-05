@@ -1,0 +1,727 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing -fno-warn-incomplete-uni-patterns #-}
+{-# LANGUAGE BangPatterns, ExtendedLiterals, OverloadedStrings, QuasiQuotes #-}
+module Repl
+  ( Flags(..)
+  , run
+  --
+  , Lines(..)
+  , Input(..)
+  , Prefill(..)
+  , CategorizedInput(..)
+  , categorize
+  --
+  , State(..)
+  , Output(..)
+  , toByteString
+  )
+  where
+
+
+import Prelude hiding (lines, read)
+import Control.Applicative ((<|>))
+import Control.Monad.Trans (lift, liftIO)
+import qualified Control.Monad.State.Strict as State
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Builder as B
+import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.UTF8 as BS_UTF8
+import qualified Data.Char as Char
+import qualified Data.List as List
+import qualified Data.Map as Map
+import qualified System.Console.Haskeline as Repl
+import qualified System.Directory as Dir
+import qualified System.Exit as Exit
+import System.FilePath ((</>))
+import qualified System.IO as IO
+import qualified System.Process as Proc
+
+import qualified File
+import qualified String as S
+
+import qualified AST.Source as Src
+import qualified AST.Prim.Module as Module
+import qualified AST.Prim.Name as N
+import qualified AST.Prim.TypeName as T
+import qualified Build
+import qualified Elm.Constraint as C
+import qualified Elm.Details as Details
+import qualified Elm.Licenses as Licenses
+import qualified Elm.Outline as Outline
+import qualified Elm.Package as Pkg
+import qualified Elm.Version as V
+import qualified Generate
+import qualified Parse.Expression as PE
+import qualified Parse.Declaration as PD
+import qualified Parse.Module as PM
+import qualified Parse.Primitives as P
+import qualified Parse.Space as PS
+import qualified Parse.Type as PT
+import qualified Parse.Variable as PV
+import Parse.Primitives (Cursor)
+import qualified Reporting
+import qualified Reporting.Annotation as A
+import Reporting.Doc ((<+>))
+import qualified Reporting.Doc as D
+import qualified Reporting.Error.Syntax as ES
+import qualified Reporting.Exit as Exit
+import qualified Reporting.Render.Code as Code
+import qualified Reporting.Report as Report
+import qualified Reporting.Task as Task
+import qualified Root as R
+
+
+
+-- RUN
+
+
+data Flags =
+  Flags
+    { _maybeInterpreter :: Maybe FilePath
+    , _noColors :: Bool
+    }
+
+
+run :: () -> Flags -> IO ()
+run () flags =
+  do  printWelcomeMessage
+      settings <- initSettings
+      env <- initEnv flags
+      let looper = Repl.runInputT settings (Repl.withInterrupt (loop env initialState))
+      exitCode <- State.evalStateT looper initialState
+      Exit.exitWith exitCode
+
+
+
+-- WELCOME
+
+
+printWelcomeMessage :: IO ()
+printWelcomeMessage =
+  let
+    vsn = V.toChars V.compiler
+    title = "Elm" <+> D.fromChars vsn
+    dashes = replicate (70 - length vsn) '-'
+  in
+  D.toAnsi IO.stdout $
+    D.vcat
+      [ D.black "----" <+> D.dullcyan title <+> D.black (D.fromChars dashes)
+      , D.black $ D.fromChars $ "Say :help for help and :exit to exit! More at " <> D.makeLink "repl"
+      , D.black "--------------------------------------------------------------------------------"
+      , D.empty
+      ]
+
+
+
+-- ENV
+
+
+data Env =
+  Env
+    { _root :: R.Root
+    , _interpreter :: FilePath
+    , _ansi :: Bool
+    }
+
+
+initEnv :: Flags -> IO Env
+initEnv (Flags maybeAlternateInterpreter noColors) =
+  do  root <- getRoot
+      interpreter <- getInterpreter maybeAlternateInterpreter
+      return $ Env root interpreter (not noColors)
+
+
+
+-- LOOP
+
+
+data Outcome
+  = Loop State
+  | End Exit.ExitCode
+
+
+type M =
+  State.StateT State IO
+
+
+loop :: Env -> State -> Repl.InputT M Exit.ExitCode
+loop env state =
+  do  input <- Repl.handleInterrupt (return Skip) read
+      outcome <- liftIO (eval env state input)
+      case outcome of
+        Loop state ->
+          do  lift (State.put state)
+              loop env state
+
+        End exitCode ->
+          return exitCode
+
+
+
+-- READ
+
+
+data Input
+  = Import Module.Name BS.ByteString
+  | Type T.Name BS.ByteString
+  | Port
+  | Decl N.Name BS.ByteString
+  | Expr BS.ByteString
+  --
+  | Reset
+  | Exit
+  | Skip
+  | Help (Maybe String)
+
+
+read :: Repl.InputT M Input
+read =
+  do  maybeLine <- Repl.getInputLine "> "
+      case maybeLine of
+        Nothing ->
+          return Exit
+
+        Just chars ->
+          do  let lines = Lines (stripLegacyBackslash chars) []
+              cat <- liftIO $ categorize lines
+              case cat of
+                Done input -> return input
+                Continue p -> readMore lines p
+
+
+readMore :: Lines -> Prefill -> Repl.InputT M Input
+readMore previousLines prefill =
+  do  input <- Repl.getInputLineWithInitial "| " (renderPrefill prefill, "")
+      case input of
+        Nothing ->
+          return Skip
+
+        Just chars ->
+          do  let lines = addLine (stripLegacyBackslash chars) previousLines
+              cat <- liftIO $ categorize lines
+              case cat of
+                Done input -> return input
+                Continue p -> readMore lines p
+
+
+-- For compatibility with 0.19.0 such that readers of "Programming Elm" by @jfairbank
+-- can get through the REPL section successfully.
+--
+-- TODO: remove stripLegacyBackslash in next MAJOR release
+--
+stripLegacyBackslash :: [Char] -> [Char]
+stripLegacyBackslash chars =
+  case chars of
+    [] ->
+      []
+
+    _:_ ->
+      if last chars == '\\'
+      then init chars
+      else chars
+
+
+data Prefill
+  = Indent
+  | DefStart N.Name
+
+
+renderPrefill :: Prefill -> String
+renderPrefill lineStart =
+  case lineStart of
+    Indent ->
+      "  "
+
+    DefStart name ->
+      N.toChars name ++ " "
+
+
+
+-- LINES
+
+
+data Lines =
+  Lines
+    { _prevLine :: String
+    , _revLines :: [String]
+    }
+
+
+addLine :: [Char] -> Lines -> Lines
+addLine line (Lines x xs) =
+  Lines line (x:xs)
+
+
+isBlank :: Lines -> Bool
+isBlank (Lines prev rev) =
+  null rev && all (==' ') prev
+
+
+isSingleLine :: Lines -> Bool
+isSingleLine (Lines _ rev) =
+  null rev
+
+
+endsWithBlankLine :: Lines -> Bool
+endsWithBlankLine (Lines prev _) =
+  all (==' ') prev
+
+
+linesToByteString :: Lines -> BS_UTF8.ByteString
+linesToByteString (Lines prev rev) =
+  BS_UTF8.fromString (unlines (reverse (prev:rev)))
+
+
+getFirstLine :: Lines -> String
+getFirstLine (Lines x xs) =
+  case xs of
+    []   -> x
+    y:ys -> getFirstLine (Lines y ys)
+
+
+
+
+-- CATEGORIZE INPUT
+
+
+data CategorizedInput
+  = Done Input
+  | Continue Prefill
+
+
+categorize :: Lines -> IO CategorizedInput
+categorize lines
+  | isBlank lines                    = pure $ Done Skip
+  | startsWithColon lines            = pure $ Done (toCommand lines)
+  | startsWithKeyword "import" lines = attemptImport lines
+  | otherwise                        = attemptDeclOrExpr lines
+
+
+attemptImport :: Lines -> IO CategorizedInput
+attemptImport lines =
+  let
+    src = linesToByteString lines
+    parser = P.specialize (\_ _ -> ()) PM.chompImport
+  in
+  do  result <- P.fromByteString parser (\_ -> ()) src
+      case result of
+        Right (Src.Import (A.At _ name) _ _) -> return $ Done (Import name src)
+        Left ()                              -> ifFail lines (Import (Module.fromString [S.ascii|ERR|]) src)
+
+
+ifFail :: Lines -> Input -> IO CategorizedInput
+ifFail lines input =
+  pure $
+    if endsWithBlankLine lines
+    then Done input
+    else Continue Indent
+
+
+ifDone :: Lines -> Input -> IO CategorizedInput
+ifDone lines input =
+  pure $
+    if isSingleLine lines || endsWithBlankLine lines
+    then Done input
+    else Continue Indent
+
+
+attemptDeclOrExpr :: Lines -> IO CategorizedInput
+attemptDeclOrExpr lines =
+  let
+    src = linesToByteString lines
+    exprParser = P.specialize (toExprPosition src) PE.expression
+    declParser = P.specialize (toDeclPosition src) PD.declaration
+  in
+  do  dResult <- P.fromByteString declParser A.Position src
+      case dResult of
+        Right (decl, _) ->
+          case decl of
+            PD.Value _ (A.At _ (Src.Value (A.At _ name) _ _ _)) -> ifDone lines (Decl name src)
+            PD.Union _ (A.At _ (Src.Union (A.At _ name) _ _  )) -> ifDone lines (Type name src)
+            PD.Alias _ (A.At _ (Src.Alias (A.At _ name) _ _  )) -> ifDone lines (Type name src)
+            PD.Port  _ _                                        -> pure $ Done Port
+
+        Left declPosition
+          | startsWithKeyword "type" lines -> ifFail lines (Type (T.nameFromString [S.ascii|ERR|]) src)
+          | startsWithKeyword "port" lines -> pure $ Done Port
+          | otherwise ->
+              do  eResult <- P.fromByteString exprParser A.Position src
+                  case eResult of
+                    Right _ ->
+                      ifDone lines (Expr src)
+
+                    Left exprPosition ->
+                      if exprPosition >= declPosition then
+                        ifFail lines (Expr src)
+                      else
+                        do  tResult <- P.fromByteString annotation (\_ -> ()) src
+                            case tResult of
+                              Right name -> pure $ Continue (DefStart name)
+                              Left ()    -> ifFail lines (Decl [N.ascii|ERR|] src)
+
+
+startsWithColon :: Lines -> Bool
+startsWithColon lines =
+  case dropWhile (==' ') (getFirstLine lines) of
+    [] -> False
+    c:_ -> c == ':'
+
+
+toCommand :: Lines -> Input
+toCommand lines =
+  case drop 1 $ dropWhile (==' ') (getFirstLine lines) of
+    "reset" -> Reset
+    "exit"  -> Exit
+    "quit"  -> Exit
+    "help"  -> Help Nothing
+    rest    -> Help (Just (takeWhile (/=' ') rest))
+
+
+startsWithKeyword :: [Char] -> Lines -> Bool
+startsWithKeyword keyword lines =
+  let
+    line = getFirstLine lines
+  in
+  List.isPrefixOf keyword line &&
+    case drop (length keyword) line of
+      [] -> True
+      c:_ -> not (Char.isAlphaNum c)
+
+
+toExprPosition :: BS.ByteString -> ES.Expr -> Cursor -> A.Position
+toExprPosition src expr cur =
+  let
+    decl = ES.DeclDef N.replValueToPrint (ES.DeclDefBody expr cur) cur
+  in
+  toDeclPosition src decl cur
+
+
+toDeclPosition :: BS.ByteString -> ES.Decl -> Cursor -> A.Position
+toDeclPosition src decl c =
+  let
+    err = ES.ParseError (ES.Declarations decl c)
+    report = ES.toReport (Code.toSource src) err
+
+    !(Report.Report _ (A.Region cur _) _ _) = report
+  in
+  A.Position cur
+
+
+annotation :: P.Parser () N.Name
+annotation =
+  do  name <- PV.lower N.fromAddr err
+      PS.chompAndCheckIndent err_ err
+      P.word1 0x3A#Word8 {-:-} err
+      PS.chompAndCheckIndent err_ err
+      (_, _) <- P.specialize err_ PT.expression
+      PS.checkFreshLine err
+      return name
+  where
+    err :: Cursor -> ()
+    err _ = ()
+
+    err_ :: a -> Cursor -> ()
+    err_ _ _ = ()
+
+
+
+-- STATE
+
+
+data State =
+  State
+    { _imports :: Map.Map Module.Name B.Builder
+    , _types :: Map.Map T.Name B.Builder
+    , _decls :: Map.Map N.Name B.Builder
+    }
+
+
+initialState :: State
+initialState =
+  State Map.empty Map.empty Map.empty
+
+
+
+-- EVAL
+
+
+eval :: Env -> State -> Input -> IO Outcome
+eval env state@(State imports types decls) input =
+  Repl.handleInterrupt (putStrLn "<cancelled>" >> return (Loop state)) $
+  case input of
+    Skip ->
+      return (Loop state)
+
+    Exit ->
+      return (End Exit.ExitSuccess)
+
+    Reset ->
+      do  putStrLn "<reset>"
+          return (Loop initialState)
+
+    Help maybeUnknownCommand ->
+      do  putStrLn (toHelpMessage maybeUnknownCommand)
+          return (Loop state)
+
+    Import name src ->
+      do  let newState = state { _imports = Map.insert name (B.byteString src) imports }
+          Loop <$> attemptEval env state newState OutputNothing
+
+    Type name src ->
+      do  let newState = state { _types = Map.insert name (B.byteString src) types }
+          Loop <$> attemptEval env state newState OutputNothing
+
+    Port ->
+      do  putStrLn "I cannot handle port declarations."
+          return (Loop state)
+
+    Decl name src ->
+      do  let newState = state { _decls = Map.insert name (B.byteString src) decls }
+          Loop <$> attemptEval env state newState (OutputDecl name)
+
+    Expr src ->
+      Loop <$> attemptEval env state state (OutputExpr src)
+
+
+
+-- ATTEMPT EVAL
+
+
+data Output
+  = OutputNothing
+  | OutputDecl N.Name
+  | OutputExpr BS.ByteString
+
+
+attemptEval :: Env -> State -> State -> Output -> IO State
+attemptEval (Env root interpreter ansi) oldState newState output =
+  do  result <-
+        R.withRootLock root $ \writer stuff ->
+        Task.run $
+        do  details <-
+              Task.eio Exit.ReplBadDetails $
+                Details.load writer Reporting.silent root stuff
+
+            artifacts <-
+              Task.eio id $
+                Build.fromRepl writer root stuff details (toByteString newState output)
+
+            traverse (Task.mapError Exit.ReplBadGenerate . Generate.repl stuff details ansi artifacts) (toPrintName output)
+
+      case result of
+        Left exit ->
+          do  Exit.toStderr (Exit.replToReport exit)
+              return oldState
+
+        Right Nothing ->
+          return newState
+
+        Right (Just javascript) ->
+          do  exitCode <- interpret interpreter javascript
+              case exitCode of
+                Exit.ExitSuccess   -> return newState
+                Exit.ExitFailure _ -> return oldState
+
+
+interpret :: FilePath -> B.Builder -> IO Exit.ExitCode
+interpret interpreter javascript =
+  let
+    createProcess = (Proc.proc interpreter []) { Proc.std_in = Proc.CreatePipe }
+  in
+  Proc.withCreateProcess createProcess $ \(Just stdin) _ _ handle ->
+    do  B.hPutBuilder stdin javascript
+        IO.hClose stdin
+        Proc.waitForProcess handle
+
+
+
+-- TO BYTESTRING
+
+
+toByteString :: State -> Output -> BS.ByteString
+toByteString (State imports types decls) output =
+  LBS.toStrict $ B.toLazyByteString $
+    mconcat
+      [ "module ", Module.toBuilder Module.repl, " exposing (..)\n"
+      , Map.foldr mappend mempty imports
+      , Map.foldr mappend mempty types
+      , Map.foldr mappend mempty decls
+      , outputToBuilder output
+      ]
+
+
+outputToBuilder :: Output -> B.Builder
+outputToBuilder output =
+  N.toBuilder N.replValueToPrint <> " =" <>
+  case output of
+    OutputNothing ->
+      " ()\n"
+
+    OutputDecl _ ->
+      " ()\n"
+
+    OutputExpr expr ->
+      foldr (\line rest -> "\n  " <> B.byteString line <> rest) "\n" (BSC.lines expr)
+
+
+
+-- TO PRINT NAME
+
+
+toPrintName :: Output -> Maybe N.Name
+toPrintName output =
+  case output of
+    OutputNothing   -> Nothing
+    OutputDecl name -> Just name
+    OutputExpr _    -> Just N.replValueToPrint
+
+
+
+-- HELP MESSAGES
+
+
+toHelpMessage :: Maybe String -> String
+toHelpMessage maybeBadCommand =
+  case maybeBadCommand of
+    Nothing ->
+      genericHelpMessage
+
+    Just command ->
+      "I do not recognize the :" ++ command ++ " command. " ++ genericHelpMessage
+
+
+genericHelpMessage :: String
+genericHelpMessage =
+  "Valid commands include:\n\
+  \\n\
+  \  :exit    Exit the REPL\n\
+  \  :help    Show this information\n\
+  \  :reset   Clear all previous imports and definitions\n\
+  \\n\
+  \More info at " ++ D.makeLink "repl" ++ "\n"
+
+
+
+-- GET ROOT
+
+
+getRoot :: IO R.Root
+getRoot =
+  do  maybeRoot <- R.findRoot
+      case maybeRoot of
+        Just root ->
+          return root
+
+        Nothing ->
+          do  root <- R.getReplTmpRoot
+              Dir.createDirectoryIfMissing True (R.src root)
+              File.withWriter $ \writer ->
+                Outline.write writer root $ Outline.Pkg $
+                  Outline.PkgOutline
+                    Pkg.dummyName
+                    Outline.defaultSummary
+                    Licenses.bsd3
+                    V.one
+                    (Outline.ExposedList [])
+                    defaultDeps
+                    Map.empty
+                    C.defaultElm
+
+              return root
+
+
+defaultDeps :: Map.Map Pkg.Name C.Constraint
+defaultDeps =
+  Map.fromList
+    [ (Pkg.core, C.anything)
+    , (Pkg.json, C.anything)
+    , (Pkg.html, C.anything)
+    ]
+
+
+
+-- GET INTERPRETER
+
+
+getInterpreter :: Maybe String -> IO FilePath
+getInterpreter maybeName =
+  case maybeName of
+    Just name ->
+      getInterpreterHelp name (Dir.findExecutable name)
+
+    Nothing ->
+      getInterpreterHelp "node` or `nodejs" $
+        do  exe1 <- Dir.findExecutable "node"
+            exe2 <- Dir.findExecutable "nodejs"
+            return (exe1 <|> exe2)
+
+
+getInterpreterHelp :: String -> IO (Maybe FilePath) -> IO FilePath
+getInterpreterHelp name findExe =
+  do  maybePath <- findExe
+      case maybePath of
+        Just path ->
+          return path
+
+        Nothing ->
+          do  IO.hPutStrLn IO.stderr (exeNotFound name)
+              Exit.exitFailure
+
+
+exeNotFound :: String -> String
+exeNotFound name =
+  "The REPL relies on node.js to execute JavaScript code outside the browser.\n"
+  ++ "I could not find executable `" ++ name ++ "` on your PATH though!\n\n"
+  ++ "You can install node.js from <http://nodejs.org/>. If it is already installed\n"
+  ++ "but has a different name, use the --interpreter flag."
+
+
+
+-- SETTINGS
+
+
+initSettings :: IO (Repl.Settings M)
+initSettings =
+  do  cache <- R.getReplCache
+      return $
+        Repl.Settings
+          { Repl.historyFile = Just (cache </> "history")
+          , Repl.autoAddHistory = True
+          , Repl.complete = Repl.completeWord Nothing " \n" lookupCompletions
+          }
+
+
+lookupCompletions :: String -> M [Repl.Completion]
+lookupCompletions string =
+  do  (State imports types decls) <- State.get
+      return $
+        addMatches string False decls N.toString $
+        addMatches string False types T.nameToString $
+        addMatches string True imports Module.toString $
+        addMatches string False commands id []
+
+
+commands :: Map.Map S.String ()
+commands =
+  Map.fromList
+    [ ([S.ascii|:exit|], ())
+    , ([S.ascii|:quit|], ())
+    , ([S.ascii|:reset|], ())
+    , ([S.ascii|:help|], ())
+    ]
+
+
+addMatches :: String -> Bool -> Map.Map k v -> (k -> S.String) -> [Repl.Completion] -> [Repl.Completion]
+addMatches string isFinished dict toStr completions =
+  Map.foldrWithKey (addMatch string isFinished toStr) completions dict
+
+
+addMatch :: String -> Bool -> (k -> S.String) -> k -> v -> [Repl.Completion] -> [Repl.Completion]
+addMatch string isFinished toStr name _ completions =
+  let
+    suggestion = S.toChars (toStr name)
+  in
+  if List.isPrefixOf string suggestion then
+    Repl.Completion suggestion suggestion isFinished : completions
+  else
+    completions

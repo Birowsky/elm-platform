@@ -1,0 +1,193 @@
+cabal-version: 3.6
+build-type: Simple
+
+name: elm
+version: 0.19.3
+
+homepage: https://elm-lang.org
+author: Evan Czaplicki
+maintainer: info@elm-lang.org
+copyright: Copyright (c) 2019-present, Evan Czaplicki
+license: BSD-3-Clause
+license-file: ../LICENSE
+
+
+executable worker
+    ghc-options: -O2 -rtsopts -threaded "-with-rtsopts=-N -qg"
+
+    hs-source-dirs:
+        src
+        ../compiler/src
+        ../builder/src
+        ../src/utils
+        ../terminal/src
+
+    main-is:
+        Main.hs
+
+    other-modules:
+        Artifacts
+        Cors
+        Endpoint.Compile
+        Endpoint.Quotes
+        Endpoint.Repl
+        Endpoint.Slack
+
+        AST.Canonical
+        AST.Optimized
+        AST.Source
+        AST.Prim.Operator
+        AST.Prim.Variable
+        AST.Utils.Shader
+        AST.Utils.Type
+        BackgroundWriter
+        Build
+        Canonicalize.Effects
+        Canonicalize.Environment
+        Canonicalize.Environment.Dups
+        Canonicalize.Environment.Foreign
+        Canonicalize.Environment.Local
+        Canonicalize.Expression
+        Canonicalize.Module
+        Canonicalize.Pattern
+        Canonicalize.Type
+        Compile
+        Data.Bag
+        Data.Index
+        Data.Map.Utils
+        Data.Name
+        Data.NonEmptyList
+        Data.OneOrMore
+        Data.Utf8
+        Deps.Registry
+        Deps.Solver
+        Deps.Website
+        Elm.Compiler.Imports
+        Elm.Compiler.Type
+        Elm.Compiler.Type.Extract
+        Elm.Constraint
+        Elm.Details
+        Elm.Docs
+        Elm.Float
+        Elm.Interface
+        Elm.Kernel
+        Elm.Licenses
+        Elm.Magnitude
+        Elm.ModuleName
+        Elm.Outline
+        Elm.Package
+        Elm.String
+        Elm.Version
+        File
+        Generate
+        Generate.Html
+        Generate.JavaScript
+        Generate.JavaScript.Builder
+        Generate.JavaScript.Expression
+        Generate.JavaScript.Functions
+        Generate.JavaScript.Name
+        Generate.Mode
+        Http
+        Json.Decode
+        Json.Encode
+        Json.String
+        Nitpick.Debug
+        Nitpick.PatternMatches
+        Optimize.Case
+        Optimize.DecisionTree
+        Optimize.Expression
+        Optimize.Module
+        Optimize.Names
+        Optimize.Port
+        Parse.Declaration
+        Parse.Expression
+        Parse.Keyword
+        Parse.Keyword_TH
+        Parse.Module
+        Parse.Number
+        Parse.Pattern
+        Parse.Primitives
+        Parse.Shader
+        Parse.Space
+        Parse.String
+        Parse.Symbol
+        Parse.Type
+        Parse.Variable
+        Paths_elm
+        Repl
+        Reporting
+        Reporting.Annotation
+        Reporting.Doc
+        Reporting.Error
+        Reporting.Error.Canonicalize
+        Reporting.Error.Docs
+        Reporting.Error.Import
+        Reporting.Error.Json
+        Reporting.Error.Main
+        Reporting.Error.Pattern
+        Reporting.Error.Syntax
+        Reporting.Error.Type
+        Reporting.Exit
+        Reporting.Exit.Help
+        Reporting.Render.Code
+        Reporting.Render.Type
+        Reporting.Render.Type.Localizer
+        Reporting.Report
+        Reporting.Result
+        Reporting.Suggest
+        Reporting.Task
+        Reporting.Warning
+        Stuff
+        Type.Constrain.Expression
+        Type.Constrain.Module
+        Type.Constrain.Pattern
+        Type.Error
+        Type.Instantiate
+        Type.Occurs
+        Type.Solve
+        Type.Type
+        Type.Unify
+        Type.UnionFind
+
+        -- utils
+        Bytes
+        Literals
+
+    Build-depends:
+        aeson,
+        ansi-terminal >= 0.8,
+        ansi-wl-pprint >= 0.6.8 && < 1,
+        base >=4.11 && <5,
+        base64-bytestring,
+        binary >= 0.8,
+        bytestring >= 0.9,
+        containers >= 0.5.8.2,
+        directory >= 1.2.3.0,
+        edit-distance >= 0.2,
+        filelock,
+        filepath >= 1,
+        ghc-prim >= 0.5.2,
+        haskeline,
+        HTTP >= 4000.2.5,
+        http-client >= 0.6,
+        http-client-tls >= 0.3,
+        http-types >= 0.12,
+        io-streams,
+        language-glsl >= 0.3,
+        mtl >= 2.2.1,
+        network >= 2.4,
+        network-uri,
+        parsec,
+        process,
+        random,
+        scientific,
+        SHA,
+        snap-core,
+        snap-server,
+        template-haskell,
+        text,
+        time >= 1.9.1,
+        unordered-containers,
+        utf8-string,
+        vector,
+        zip-archive
