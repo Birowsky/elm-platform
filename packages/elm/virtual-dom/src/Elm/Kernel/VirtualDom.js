@@ -994,155 +994,199 @@ function _VirtualDom_diffKids(xParent, yParent, patches, index)
 
 
 // KEYED DIFF
+//
+// 1. Diff the common prefix and suffix in place. This is a cheap linear scan
+//    that allocates nothing, and it covers the most common cases on its own:
+//    no change, appending or prepending any number of kids, and editing,
+//    adding, or removing a contiguous run of kids anywhere in the list.
+//
+// 2. For the kids in between, match old kids to new kids by key. Kids that
+//    match nothing are removed or inserted.
+//
+// 3. Among the matched kids, find the longest run that is already in the right
+//    relative order. Those stay where they are and are diffed in place. Only
+//    the other matched kids are moved, which is the fewest moves possible.
+//    Nodes that stay are never detached, so they keep focus, scroll position,
+//    running animations, iframe and media state, etc.
+//
+// Duplicate keys are matched in order of appearance.
 
 
 function _VirtualDom_diffKeyedKids(xParent, yParent, patches, rootIndex)
 {
-	var localPatches = [];
-
-	var changes = {}; // Dict String Entry
-	var inserts = []; // Array { index : Int, entry : Entry }
-	// type Entry = { tag : String, vnode : VNode, index : Int, data : _ }
-
 	var xKids = xParent.__kids;
 	var yKids = yParent.__kids;
 	var xLen = xKids.length;
 	var yLen = yKids.length;
-	var xIndex = 0;
-	var yIndex = 0;
+	var xEnd = xLen;
+	var yEnd = yLen;
+	var start = 0;
+
+	var localPatches = [];
+	var inserts = []; // Array { index : Int, entry : Entry }
+	var endInserts = undefined; // Array { index : Int, entry : Entry }
+	// type Entry = { tag : INSERT | MOVE, vnode : VNode, index : Int, data : DomNode }
 
 	var index = rootIndex;
 
-	while (xIndex < xLen && yIndex < yLen)
+	// COMMON PREFIX
+
+	while (start < xEnd && start < yEnd && xKids[start].a === yKids[start].a)
 	{
-		var x = xKids[xIndex];
-		var y = yKids[yIndex];
-
-		var xKey = x.a;
-		var yKey = y.a;
-		var xNode = x.b;
-		var yNode = y.b;
-
-		var newMatch = undefined;
-		var oldMatch = undefined;
-
-		// check if keys match
-
-		if (xKey === yKey)
-		{
-			index++;
-			_VirtualDom_diffHelp(xNode, yNode, localPatches, index);
-			index += xNode.__descendantsCount || 0;
-
-			xIndex++;
-			yIndex++;
-			continue;
-		}
-
-		// look ahead 1 to detect insertions and removals.
-
-		var xNext = xKids[xIndex + 1];
-		var yNext = yKids[yIndex + 1];
-
-		if (xNext)
-		{
-			var xNextKey = xNext.a;
-			var xNextNode = xNext.b;
-			oldMatch = yKey === xNextKey;
-		}
-
-		if (yNext)
-		{
-			var yNextKey = yNext.a;
-			var yNextNode = yNext.b;
-			newMatch = xKey === yNextKey;
-		}
-
-
-		// swap x and y
-		if (newMatch && oldMatch)
-		{
-			index++;
-			_VirtualDom_diffHelp(xNode, yNextNode, localPatches, index);
-			_VirtualDom_insertNode(changes, localPatches, xKey, yNode, yIndex, inserts);
-			index += xNode.__descendantsCount || 0;
-
-			index++;
-			_VirtualDom_removeNode(changes, localPatches, xKey, xNextNode, index);
-			index += xNextNode.__descendantsCount || 0;
-
-			xIndex += 2;
-			yIndex += 2;
-			continue;
-		}
-
-		// insert y
-		if (newMatch)
-		{
-			index++;
-			_VirtualDom_insertNode(changes, localPatches, yKey, yNode, yIndex, inserts);
-			_VirtualDom_diffHelp(xNode, yNextNode, localPatches, index);
-			index += xNode.__descendantsCount || 0;
-
-			xIndex += 1;
-			yIndex += 2;
-			continue;
-		}
-
-		// remove x
-		if (oldMatch)
-		{
-			index++;
-			_VirtualDom_removeNode(changes, localPatches, xKey, xNode, index);
-			index += xNode.__descendantsCount || 0;
-
-			index++;
-			_VirtualDom_diffHelp(xNextNode, yNode, localPatches, index);
-			index += xNextNode.__descendantsCount || 0;
-
-			xIndex += 2;
-			yIndex += 1;
-			continue;
-		}
-
-		// remove x, insert y
-		if (xNext && xNextKey === yNextKey)
-		{
-			index++;
-			_VirtualDom_removeNode(changes, localPatches, xKey, xNode, index);
-			_VirtualDom_insertNode(changes, localPatches, yKey, yNode, yIndex, inserts);
-			index += xNode.__descendantsCount || 0;
-
-			index++;
-			_VirtualDom_diffHelp(xNextNode, yNextNode, localPatches, index);
-			index += xNextNode.__descendantsCount || 0;
-
-			xIndex += 2;
-			yIndex += 2;
-			continue;
-		}
-
-		break;
-	}
-
-	// eat up any remaining nodes with removeNode and insertNode
-
-	while (xIndex < xLen)
-	{
-		index++;
-		var x = xKids[xIndex];
-		var xNode = x.b;
-		_VirtualDom_removeNode(changes, localPatches, x.a, xNode, index);
+		var xNode = xKids[start].b;
+		_VirtualDom_diffHelp(xNode, yKids[start].b, localPatches, ++index);
 		index += xNode.__descendantsCount || 0;
-		xIndex++;
+		start++;
 	}
 
-	while (yIndex < yLen)
+	// COMMON SUFFIX (diffed last, so that patch indexes keep increasing)
+
+	while (start < xEnd && start < yEnd && xKids[xEnd - 1].a === yKids[yEnd - 1].a)
 	{
-		var endInserts = endInserts || [];
-		var y = yKids[yIndex];
-		_VirtualDom_insertNode(changes, localPatches, y.a, y.b, undefined, endInserts);
-		yIndex++;
+		xEnd--;
+		yEnd--;
+	}
+
+	// MIDDLE
+
+	var xMid = xEnd - start;
+	var yMid = yEnd - start;
+
+	if (xMid > 0 || yMid > 0)
+	{
+		// for each new kid, the position of the old kid it came from (or -1)
+		var sources = new Array(yMid);
+		var keyToY = Object.create(null); // Dict String (Int | Array Int)
+
+		for (var j = 0; j < yMid; j++)
+		{
+			sources[j] = -1;
+			var key = yKids[start + j].a;
+			var found = keyToY[key];
+			if (found === undefined)
+			{
+				keyToY[key] = j;
+			}
+			else if (typeof found === 'number')
+			{
+				keyToY[key] = [found, j];
+			}
+			else
+			{
+				found.push(j);
+			}
+		}
+
+		// for each old kid, the position of the new kid it goes to (or -1)
+		var targets = new Array(xMid);
+		var moved = false;
+		var lastTarget = -1;
+
+		for (var i = 0; i < xMid; i++)
+		{
+			var key = xKids[start + i].a;
+			var found = keyToY[key];
+			var target = -1;
+			if (typeof found === 'number')
+			{
+				target = found;
+				keyToY[key] = -1;
+			}
+			else if (found && found.length > 0)
+			{
+				target = found.shift();
+			}
+
+			targets[i] = target;
+			if (target >= 0)
+			{
+				sources[target] = i;
+				target < lastTarget ? (moved = true) : (lastTarget = target);
+			}
+		}
+
+		var stays = _VirtualDom_findStayingKids(sources, moved);
+
+		// walk the old kids in order: diff in place, detach to move, or remove
+
+		var entries = new Array(yMid); // the entry of each moved kid, by new position
+
+		for (var i = 0; i < xMid; i++)
+		{
+			var xNode = xKids[start + i].b;
+			var target = targets[i];
+			index++;
+
+			if (target < 0)
+			{
+				_VirtualDom_pushPatch(localPatches, __3_REMOVE, index, undefined);
+			}
+			else if (stays[target])
+			{
+				_VirtualDom_diffHelp(xNode, yKids[start + target].b, localPatches, index);
+			}
+			else
+			{
+				var yNode = yKids[start + target].b;
+				var subPatches = [];
+				_VirtualDom_diffHelp(xNode, yNode, subPatches, index);
+
+				var entry = {
+					__tag: __5_MOVE,
+					__vnode: yNode,
+					__index: start + target,
+					__data: undefined
+				};
+				entries[target] = entry;
+
+				_VirtualDom_pushPatch(localPatches, __3_REMOVE, index, {
+					__patches: subPatches,
+					__entry: entry
+				});
+			}
+
+			index += xNode.__descendantsCount || 0;
+		}
+
+		// walk the new kids in order: (re)insert everything that did not stay.
+		// Brand new kids at the very end of the list are appended all at once.
+
+		var endStart = yMid;
+		if (yEnd === yLen)
+		{
+			while (endStart > 0 && sources[endStart - 1] < 0)
+			{
+				endStart--;
+			}
+		}
+
+		for (var j = 0; j < yMid; j++)
+		{
+			if (stays[j])
+			{
+				continue;
+			}
+
+			var entry = entries[j] || {
+				__tag: __5_INSERT,
+				__vnode: yKids[start + j].b,
+				__index: start + j,
+				__data: undefined
+			};
+
+			j < endStart
+				? inserts.push({ __index: start + j, __entry: entry })
+				: (endInserts || (endInserts = [])).push({ __index: start + j, __entry: entry });
+		}
+	}
+
+	// diff the common suffix in place
+
+	for (var i = xEnd, j = yEnd; i < xLen; i++, j++)
+	{
+		var xNode = xKids[i].b;
+		_VirtualDom_diffHelp(xNode, yKids[j].b, localPatches, ++index);
+		index += xNode.__descendantsCount || 0;
 	}
 
 	if (localPatches.length > 0 || inserts.length > 0 || endInserts)
@@ -1156,91 +1200,56 @@ function _VirtualDom_diffKeyedKids(xParent, yParent, patches, rootIndex)
 }
 
 
-
-// CHANGES FROM KEYED DIFF
-
-
-var _VirtualDom_POSTFIX = '_elmW6BL';
-
-
-function _VirtualDom_insertNode(changes, localPatches, key, vnode, yIndex, inserts)
+// Given `sources` (for each new kid, the position of its old kid, or -1 if it
+// is brand new), mark the new kids that can stay where they are: the longest
+// subsequence whose old positions are increasing. When nothing moved, that is
+// simply every matched kid.
+//
+function _VirtualDom_findStayingKids(sources, moved)
 {
-	var entry = changes[key];
+	var len = sources.length;
+	var stays = new Array(len);
 
-	// never seen this key before
-	if (!entry)
+	if (!moved)
 	{
-		entry = {
-			__tag: __5_INSERT,
-			__vnode: vnode,
-			__index: yIndex,
-			__data: undefined
-		};
-
-		inserts.push({ __index: yIndex, __entry: entry });
-		changes[key] = entry;
-
-		return;
+		for (var j = 0; j < len; j++)
+		{
+			stays[j] = sources[j] >= 0;
+		}
+		return stays;
 	}
 
-	// this key was removed earlier, a match!
-	if (entry.__tag === __5_REMOVE)
+	// patience sorting: tails[k] is the new position ending the best increasing
+	// run of length k + 1 found so far
+	var tails = [];
+	var previous = new Array(len);
+
+	for (var j = 0; j < len; j++)
 	{
-		inserts.push({ __index: yIndex, __entry: entry });
+		var source = sources[j];
+		if (source < 0)
+		{
+			continue;
+		}
 
-		entry.__tag = __5_MOVE;
-		var subPatches = [];
-		_VirtualDom_diffHelp(entry.__vnode, vnode, subPatches, entry.__index);
-		entry.__index = yIndex;
-		entry.__data.__data = {
-			__patches: subPatches,
-			__entry: entry
-		};
+		var lo = 0;
+		var hi = tails.length;
+		while (lo < hi)
+		{
+			var mid = (lo + hi) >>> 1;
+			sources[tails[mid]] < source ? (lo = mid + 1) : (hi = mid);
+		}
 
-		return;
+		previous[j] = lo > 0 ? tails[lo - 1] : -1;
+		tails[lo] = j;
 	}
 
-	// this key has already been inserted or moved, a duplicate!
-	_VirtualDom_insertNode(changes, localPatches, key + _VirtualDom_POSTFIX, vnode, yIndex, inserts);
-}
-
-
-function _VirtualDom_removeNode(changes, localPatches, key, vnode, index)
-{
-	var entry = changes[key];
-
-	// never seen this key before
-	if (!entry)
+	for (var j = tails.length > 0 ? tails[tails.length - 1] : -1; j >= 0; j = previous[j])
 	{
-		var patch = _VirtualDom_pushPatch(localPatches, __3_REMOVE, index, undefined);
-
-		changes[key] = {
-			__tag: __5_REMOVE,
-			__vnode: vnode,
-			__index: index,
-			__data: patch
-		};
-
-		return;
+		stays[j] = true;
 	}
 
-	// this key was inserted earlier, a match!
-	if (entry.__tag === __5_INSERT)
-	{
-		entry.__tag = __5_MOVE;
-		var subPatches = [];
-		_VirtualDom_diffHelp(vnode, entry.__vnode, subPatches, index);
-
-		_VirtualDom_pushPatch(localPatches, __3_REMOVE, index, {
-			__patches: subPatches,
-			__entry: entry
-		});
-
-		return;
-	}
-
-	// this key has already been removed or moved, a duplicate!
-	_VirtualDom_removeNode(changes, localPatches, key + _VirtualDom_POSTFIX, vnode, index);
+	return stays;
 }
 
 
@@ -1430,18 +1439,13 @@ function _VirtualDom_applyPatch(domNode, patch)
 			return domNode;
 
 		case __3_REMOVE:
+			domNode.parentNode.removeChild(domNode);
 			var data = patch.__data;
-			if (!data)
+			if (data)
 			{
-				domNode.parentNode.removeChild(domNode);
-				return domNode;
+				// detached to be moved, so patch it while it is out of the document
+				data.__entry.__data = _VirtualDom_applyPatchesHelp(domNode, data.__patches);
 			}
-			var entry = data.__entry;
-			if (typeof entry.__index !== 'undefined')
-			{
-				domNode.parentNode.removeChild(domNode);
-			}
-			entry.__data = _VirtualDom_applyPatchesHelp(domNode, data.__patches);
 			return domNode;
 
 		case __3_REORDER:
@@ -1478,13 +1482,13 @@ function _VirtualDom_applyPatchReorder(domNode, patch)
 {
 	var data = patch.__data;
 
-	// remove end inserts
+	// render brand new kids for the end of the list
 	var frag = _VirtualDom_applyPatchReorderEndInsertsHelp(data.__endInserts, patch);
 
-	// removals
+	// patches in place, removals, and detaching kids that move
 	domNode = _VirtualDom_applyPatchesHelp(domNode, data.__patches);
 
-	// inserts
+	// inserts and moves, in order of their new position
 	var inserts = data.__inserts;
 	for (var i = 0; i < inserts.length; i++)
 	{
@@ -1513,15 +1517,11 @@ function _VirtualDom_applyPatchReorderEndInsertsHelp(endInserts, patch)
 		return;
 	}
 
+	// only brand new kids end up here, never kids that are already mounted
 	var frag = _VirtualDom_doc.createDocumentFragment();
 	for (var i = 0; i < endInserts.length; i++)
 	{
-		var insert = endInserts[i];
-		var entry = insert.__entry;
-		_VirtualDom_appendChild(frag, entry.__tag === __5_MOVE
-			? entry.__data
-			: _VirtualDom_render(entry.__vnode, patch.__eventNode)
-		);
+		_VirtualDom_appendChild(frag, _VirtualDom_render(endInserts[i].__entry.__vnode, patch.__eventNode));
 	}
 	return frag;
 }

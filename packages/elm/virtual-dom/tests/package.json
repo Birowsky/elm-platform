@@ -1,0 +1,11 @@
+{
+  "name": "virtual-dom-tests",
+  "private": true,
+  "description": "Runs the real kernel code from src/Elm/Kernel/VirtualDom.js against jsdom.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3"
+  }
+}
