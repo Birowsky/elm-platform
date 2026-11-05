@@ -35,7 +35,8 @@ runs:
       shell: bash
       run: |
         compiler/build-mac.sh
-        cp "$(cd compiler && "$HOME/.ghcup/bin/cabal" list-bin exe:elm)" npm/elm-platform-darwin_arm64/elm
+        export PATH="$HOME/.ghcup/bin:$PATH"
+        cp "$(cd compiler && cabal list-bin exe:elm)" npm/elm-platform-darwin_arm64/elm
         strip npm/elm-platform-darwin_arm64/elm
 
     - name: Check the binary runs
