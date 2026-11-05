@@ -1,0 +1,45 @@
+name: Compiler binary
+description: Puts the compiler for a platform at npm/elm-platform-<platform>/elm, building it only when compiler/ changed.
+
+inputs:
+  platform:
+    description: linux_x64 or darwin_arm64
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: source
+      name: Identify the compiler source
+      shell: bash
+      run: echo "tree=$(git rev-parse HEAD:compiler)" >> "$GITHUB_OUTPUT" # the hash of everything under compiler/, the build recipes included, so it changes exactly when the binary could
+
+    - id: cache
+      name: Restore the binary built from this source
+      uses: actions/cache@v4
+      with:
+        path: npm/elm-platform-${{ inputs.platform }}/elm
+        key: elm-compiler-${{ inputs.platform }}-${{ steps.source.outputs.tree }}
+
+    - name: Build for Linux
+      if: steps.cache.outputs.cache-hit != 'true' && inputs.platform == 'linux_x64'
+      shell: bash
+      run: |
+        docker build --platform=linux/amd64 --tag=elm-compiler --file=compiler/installers/linux/Dockerfile compiler
+        docker create --name=elm-compiler-output elm-compiler
+        docker cp elm-compiler-output:/usr/local/bin/elm npm/elm-platform-linux_x64/elm
+        docker rm elm-compiler-output
+
+    - name: Build for macOS
+      if: steps.cache.outputs.cache-hit != 'true' && inputs.platform == 'darwin_arm64'
+      shell: bash
+      run: |
+        compiler/build-mac.sh
+        cp "$(cd compiler && "$HOME/.ghcup/bin/cabal" list-bin exe:elm)" npm/elm-platform-darwin_arm64/elm
+        strip npm/elm-platform-darwin_arm64/elm
+
+    - name: Check the binary runs
+      shell: bash
+      run: |
+        chmod +x npm/elm-platform-${{ inputs.platform }}/elm
+        npm/elm-platform-${{ inputs.platform }}/elm --version

@@ -39,15 +39,15 @@ function elmHome() {
 }
 
 function toBinary() {
-  const local = devRoot && join(devRoot, '.dev/elm') // `npm run build:compiler` puts it there
+  const binaryPackage = `elm-platform-${process.platform}_${process.arch}`
+  const local = devRoot && join(devRoot, 'npm', binaryPackage, 'elm') // `npm run build:compiler` puts it there
   return local && existsSync(local) ? local : toPublishedBinary()
 
   function toPublishedBinary() {
-    const name = `@elm_binaries/${process.platform}_${process.arch}/${process.platform === 'win32' ? 'elm.exe' : 'elm'}`
     try {
-      return createRequire(import.meta.url).resolve(name)
+      return createRequire(import.meta.url).resolve(`@birowsky/${binaryPackage}/elm`)
     } catch {
-      throw new Error(`@birowsky/elm-platform has no compiler for this machine: ${name} is not installed.`)
+      throw new Error(`@birowsky/elm-platform has no compiler for ${process.platform} on ${process.arch}: @birowsky/${binaryPackage} is not installed. It ships for macOS on arm64 and Linux on x64.`)
     }
   }
 }
@@ -71,18 +71,19 @@ function toStamp() {
 
   function toDevHash() {
     const hash = createHash('sha256')
-    platformInputs().forEach(file => hash.update(file).update(readFileSync(file)))
-    return hash.digest('hex')
+    toPackageFiles().forEach(file => hash.update(file).update(readFileSync(file)))
+    const { size, mtimeMs } = statSync(toBinary()) // reading the binary on every compile would cost more than the rest of this file together
+    return hash.update(`${toBinary()}:${size}:${mtimeMs}`).digest('hex')
   }
 }
 
 /** The files that decide what the compiler produces, for tools that cache its output, like webpack. */
 function platformInputs() {
   return devRoot ? [...toPackageFiles(), toBinary()] : [join(packageDir, 'package.json')]
+}
 
-  function toPackageFiles() {
-    return bundledPackages().flatMap(({ dir }) => [join(dir, 'elm.json'), ...toFilesIn(join(dir, 'src'))])
-  }
+function toPackageFiles() {
+  return bundledPackages().flatMap(({ dir }) => [join(dir, 'elm.json'), ...toFilesIn(join(dir, 'src'))])
 
   function toFilesIn(dir) {
     return readdirSync(dir, { recursive: true }).map(file => join(dir, file)).filter(path => statSync(path).isFile()).sort()

@@ -1,0 +1,77 @@
+name: Release
+
+# Pushing a tag vX, where X is the version in npm/elm-platform/package.json, tests the release on every platform it ships for and publishes it.
+# Needs the NPM_TOKEN secret: an npm automation token with write access to the @birowsky scope.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: # builds and tests every platform without publishing
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        include:
+          - platform: linux_x64
+            runner: ubuntu-latest
+          - platform: darwin_arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Compiler
+        uses: ./.github/actions/compiler
+        with:
+          platform: ${{ matrix.platform }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Kernel and wrapper tests
+        run: npm test
+
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: E2E
+        run: npm run e2e
+
+      - name: Keep the binary for publishing
+        uses: actions/upload-artifact@v4
+        with:
+          name: elm-platform-${{ matrix.platform }}
+          path: npm/elm-platform-${{ matrix.platform }}/elm
+          if-no-files-found: error
+
+  publish:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+
+      - name: Take the tested binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: npm
+
+      - name: Publish
+        run: node scripts/publish.js
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

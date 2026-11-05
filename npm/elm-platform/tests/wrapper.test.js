@@ -4,12 +4,13 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = join(packageDir, '../..')
+const binaryPackage = join(repoRoot, `npm/elm-platform-${process.platform}_${process.arch}`) // `npm run build:compiler` fills it
 const scratch = mkdtempSync(join(tmpdir(), 'elm-platform-wrapper-'))
 const kernel = 'elm/virtual-dom/src/Elm/Kernel/VirtualDom.js'
 const patchedVirtualDom = JSON.parse(readFileSync(join(repoRoot, 'packages/elm/virtual-dom/elm.json'), 'utf8')).version
@@ -137,7 +138,7 @@ function toInstall(name) {
   mkdirSync(join(install, 'user-home'), { recursive: true })
   ;['bin', 'lib', 'package.json'].forEach(entry => cpSync(join(packageDir, entry), join(platform, entry), { recursive: true }))
   cpSync(join(repoRoot, 'packages'), join(platform, 'packages'), { recursive: true, filter: path => !path.split('/').some(part => part === 'tests' || part === 'node_modules') })
-  symlinkSync(join(repoRoot, 'node_modules/@elm_binaries'), join(install, 'node_modules/@elm_binaries'))
+  symlinkSync(binaryPackage, join(install, `node_modules/@birowsky/${basename(binaryPackage)}`))
   return install
 }
 

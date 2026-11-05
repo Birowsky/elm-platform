@@ -1,0 +1,22 @@
+{
+  "name": "@birowsky/elm-platform-darwin_arm64",
+  "version": "0.19.3-2",
+  "description": "The Elm compiler binary for macOS on Apple Silicon. Installed by @birowsky/elm-platform. Unofficial, not affiliated with the Elm project.",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Birowsky/elm-platform.git",
+    "directory": "npm/elm-platform-darwin_arm64"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "elm",
+    "LICENSE",
+    "README.md"
+  ]
+}

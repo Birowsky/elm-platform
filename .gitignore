@@ -1,10 +1,10 @@
 node_modules
 dist-newstyle
 elm-stuff
-.dev
 .tmp
 .idea
 .DS_Store
 test-results
 playwright-report
 npm/elm-platform/packages
+npm/elm-platform-*/elm

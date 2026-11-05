@@ -6,7 +6,6 @@ on:
       - master
   pull_request:
   workflow_dispatch:
-  workflow_call:
 
 jobs:
   test:
@@ -14,6 +13,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Compiler
+        uses: ./.github/actions/compiler
+        with:
+          platform: linux_x64
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -32,3 +36,35 @@ jobs:
 
       - name: E2E
         run: npm run e2e
+
+  compiler-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - id: source
+        name: Identify the compiler source
+        run: echo "tree=$(git rev-parse HEAD:compiler)" >> "$GITHUB_OUTPUT"
+
+      - id: passed
+        name: Check whether this source already passed
+        uses: actions/cache@v4
+        with:
+          path: .compiler-tests-passed
+          key: compiler-tests-${{ steps.source.outputs.tree }}
+
+      - name: Install the toolchain
+        if: steps.passed.outputs.cache-hit != 'true'
+        run: |
+          ghcup install ghc 9.10.3 --set
+          ghcup install cabal 3.16.1.0 --set
+          echo "$HOME/.ghcup/bin" >> "$GITHUB_PATH"
+
+      - name: Test
+        if: steps.passed.outputs.cache-hit != 'true'
+        working-directory: compiler
+        run: |
+          cabal update
+          cabal test
+          touch ../.compiler-tests-passed

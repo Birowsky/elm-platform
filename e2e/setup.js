@@ -8,18 +8,17 @@ import { browserApps, built, consumer, elmBin, root, scratch, source } from './p
 
 rmSync(scratch, { recursive: true, force: true })
 mkdirSync(consumer, { recursive: true })
-const tarball = toTarball()
-install(tarball)
+install(['npm/elm-platform', `npm/elm-platform-${process.platform}_${process.arch}`].map(toTarball))
 browserApps.flatMap(app => ['dev', 'optimize'].map(mode => ({ app, mode }))).forEach(compile)
 
-function toTarball() {
-  const name = execFileSync('npm', ['pack', join(root, 'npm/elm-platform'), '--pack-destination', scratch, '--silent'], { encoding: 'utf8', cwd: root }).trim().split('\n').pop()
+function toTarball(dir) {
+  const name = execFileSync('npm', ['pack', join(root, dir), '--pack-destination', scratch, '--silent'], { encoding: 'utf8', cwd: root }).trim().split('\n').pop()
   return join(scratch, name)
 }
 
-function install(tarball) {
+function install(tarballs) {
   writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true }))
-  execFileSync('npm', ['install', tarball, 'elm-test@0.19.3-0', '--no-audit', '--no-fund', '--silent'], { cwd: consumer, stdio: 'inherit' })
+  execFileSync('npm', ['install', ...tarballs, 'elm-test@0.19.3-0', '--no-audit', '--no-fund', '--silent'], { cwd: consumer, stdio: 'inherit' })
   cpSync(source('query'), join(consumer, 'query'), { recursive: true })
 }
 

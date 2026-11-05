@@ -1,6 +1,6 @@
 {
   "name": "@birowsky/elm-platform",
-  "version": "0.19.3-1",
+  "version": "0.19.3-2",
   "description": "An unofficial Elm distribution: the Elm compiler plus patched core libraries, released as one tested version. Not affiliated with the Elm project.",
   "license": "BSD-3-Clause",
   "repository": {
@@ -39,10 +39,7 @@
     "test": "node --test tests/*.test.js"
   },
   "optionalDependencies": {
-    "@elm_binaries/darwin_arm64": "0.19.3-0",
-    "@elm_binaries/darwin_x64": "0.19.3-0",
-    "@elm_binaries/linux_arm64": "0.19.3-0",
-    "@elm_binaries/linux_x64": "0.19.3-0",
-    "@elm_binaries/win32_x64": "0.19.3-0"
+    "@birowsky/elm-platform-darwin_arm64": "0.19.3-2",
+    "@birowsky/elm-platform-linux_x64": "0.19.3-2"
   }
 }

@@ -3,12 +3,11 @@
   "private": true,
   "description": "The Elm compiler and patched core libraries, released as one tested version: @birowsky/elm-platform.",
   "workspaces": [
-    "npm/elm-platform",
     "packages/elm/virtual-dom/tests",
     "e2e"
   ],
   "scripts": {
-    "test": "npm test -w packages/elm/virtual-dom/tests && npm test -w npm/elm-platform",
+    "test": "npm test -w packages/elm/virtual-dom/tests && node --test npm/elm-platform/tests/*.test.js",
     "e2e": "npm test -w e2e",
     "build:compiler": "node scripts/build-compiler.js"
   },
