@@ -12,7 +12,7 @@ module Deps.Diff
   where
 
 
-import Control.Monad (zipWithM)
+import Control.Monad (foldM, zipWithM)
 import Data.Function (on)
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -61,21 +61,37 @@ data ModuleChanges =
     }
 
 
+-- `_changed` breaks existing code (MAJOR) while `_compatible` holds changes
+-- that existing code keeps working with, like a value whose type became more
+-- general or a type that started exposing its constructors (MINOR).
+--
 data Changes k v =
   Changes
     { _added :: Map.Map k v
     , _changed :: Map.Map k (v,v)
+    , _compatible :: Map.Map k (v,v)
     , _removed :: Map.Map k v
     }
 
 
-getChanges :: (Ord k) => (v -> v -> Bool) -> Map.Map k v -> Map.Map k v -> Changes k v
-getChanges isEquivalent old new =
+data Verdict
+  = Same
+  | Compatible
+  | Breaking
+  deriving (Eq, Ord)
+
+
+getChanges :: (Ord k) => (v -> v -> Verdict) -> Map.Map k v -> Map.Map k v -> Changes k v
+getChanges judge old new =
   let
-    overlap = Map.intersectionWith (,) old new
-    changed = Map.filter (not . uncurry isEquivalent) overlap
+    judged = Map.intersectionWith (\o n -> (judge o n, (o,n))) old new
+    withVerdict v = Map.map snd (Map.filter ((==) v . fst) judged)
   in
-    Changes (Map.difference new old) changed (Map.difference old new)
+    Changes
+      (Map.difference new old)
+      (withVerdict Breaking)
+      (withVerdict Compatible)
+      (Map.difference old new)
 
 
 
@@ -85,72 +101,113 @@ getChanges isEquivalent old new =
 diff :: Docs.Documentation -> Docs.Documentation -> PackageChanges
 diff oldDocs newDocs =
   let
+    env =
+      Env (toAliasTable oldDocs) (toAliasTable newDocs)
+
     filterOutPatches chngs =
       Map.filter (\chng -> moduleChangeMagnitude chng /= M.PATCH) chngs
 
-    (Changes added changed removed) =
-      getChanges (\_ _ -> False) oldDocs newDocs
+    (Changes added changed _ removed) =
+      getChanges (\_ _ -> Breaking) oldDocs newDocs
   in
     PackageChanges
       (Map.keys added)
-      (filterOutPatches (Map.map diffModule changed))
+      (filterOutPatches (Map.map (diffModule env) changed))
       (Map.keys removed)
 
 
-
-diffModule :: (Docs.Module, Docs.Module) -> ModuleChanges
-diffModule (Docs.Module _ _ u1 a1 v1 b1, Docs.Module _ _ u2 a2 v2 b2) =
+diffModule :: Env -> (Docs.Module, Docs.Module) -> ModuleChanges
+diffModule env (Docs.Module _ _ u1 a1 v1 b1, Docs.Module _ _ u2 a2 v2 b2) =
   ModuleChanges
-    (getChanges isEquivalentUnion u1 u2)
-    (getChanges isEquivalentAlias a1 a2)
-    (getChanges isEquivalentValue v1 v2)
-    (getChanges isEquivalentBinop b1 b2)
+    (getChanges (judgeUnion env) u1 u2)
+    (getChanges (judgeAlias env) a1 a2)
+    (getChanges (judgeValue env) v1 v2)
+    (getChanges (judgeBinop env) b1 b2)
 
 
 
--- EQUIVALENCE
+-- JUDGE DECLARATIONS
 
 
-isEquivalentUnion :: Docs.Union -> Docs.Union -> Bool
-isEquivalentUnion (Docs.Union oldComment oldVars oldCtors) (Docs.Union newComment newVars newCtors) =
-    length oldCtors == length newCtors
-    && and (zipWith (==) (map fst oldCtors) (map fst newCtors))
-    && and (Map.elems (Map.intersectionWith equiv (Map.fromList oldCtors) (Map.fromList newCtors)))
+judgeUnion :: Env -> Docs.Union -> Docs.Union -> Verdict
+judgeUnion env (Docs.Union _ oldVars oldCtors) (Docs.Union _ newVars newCtors)
+  | length oldVars /= length newVars = Breaking
+  | null oldCtors =
+      -- opaque before, so exposing constructors now only adds things
+      max (if null newCtors then Same else Compatible) (judgeRenaming (zip oldVars newVars))
+  | null newCtors = Breaking
+  | Map.keys oldMap /= Map.keys newMap = Breaking
+  | otherwise =
+      -- constructor order is irrelevant: Elm has no deriving or enum ordering
+      case sequence (Map.elems (Map.intersectionWith diffCtor oldMap newMap)) of
+        Nothing ->
+          Breaking
+
+        Just renamings ->
+          judgeRenaming (zip oldVars newVars ++ concat renamings)
   where
-    equiv :: [Type.Type] -> [Type.Type] -> Bool
-    equiv oldTypes newTypes =
-      let
-        allEquivalent =
-          zipWith
-            isEquivalentAlias
-            (map (Docs.Alias oldComment oldVars) oldTypes)
-            (map (Docs.Alias newComment newVars) newTypes)
-      in
-        length oldTypes == length newTypes
-        && and allEquivalent
+    oldMap = Map.fromList oldCtors
+    newMap = Map.fromList newCtors
+
+    diffCtor oldArgs newArgs =
+      if length oldArgs /= length newArgs then
+        Nothing
+      else
+        concat <$> zipWithM (\o n -> diffType (expandOld env o) (expandNew env n)) oldArgs newArgs
 
 
-isEquivalentAlias :: Docs.Alias -> Docs.Alias -> Bool
-isEquivalentAlias (Docs.Alias _ oldVars oldType) (Docs.Alias _ newVars newType) =
-  case diffType oldType newType of
-    Nothing ->
-      False
+judgeAlias :: Env -> Docs.Alias -> Docs.Alias -> Verdict
+judgeAlias env (Docs.Alias _ oldVars oldType) (Docs.Alias _ newVars newType)
+  | length oldVars /= length newVars = Breaking
+  | otherwise =
+      max (judgeRecordConstructor oldType newType) $
+        case diffType (expandOld env oldType) (expandNew env newType) of
+          Nothing ->
+            Breaking
 
-    Just renamings ->
-      length oldVars == length newVars
-      && isEquivalentRenaming (zip oldVars newVars ++ renamings)
-
-
-isEquivalentValue :: Docs.Value -> Docs.Value -> Bool
-isEquivalentValue (Docs.Value c1 t1) (Docs.Value c2 t2) =
-  isEquivalentAlias (Docs.Alias c1 [] t1) (Docs.Alias c2 [] t2)
+          Just renamings ->
+            judgeRenaming (zip oldVars newVars ++ renamings)
 
 
-isEquivalentBinop :: Docs.Binop -> Docs.Binop -> Bool
-isEquivalentBinop (Docs.Binop c1 t1 a1 p1) (Docs.Binop c2 t2 a2 p2) =
-  isEquivalentAlias (Docs.Alias c1 [] t1) (Docs.Alias c2 [] t2)
-  && a1 == a2
-  && p1 == p2
+-- An alias of a closed record also defines a constructor function whose
+-- arguments follow the field order, so `type alias P = { x : Int, y : Int }`
+-- and `{ y : Int, x : Int }` are different APIs even though the types match.
+--
+judgeRecordConstructor :: Type.Type -> Type.Type -> Verdict
+judgeRecordConstructor oldType newType =
+  case (recordConstructor oldType, recordConstructor newType) of
+    (Just oldFields, Just newFields) -> if oldFields == newFields then Same else Breaking
+    (Just _, Nothing)               -> Breaking
+    (Nothing, Just _)               -> Compatible
+    (Nothing, Nothing)              -> Same
+  where
+    recordConstructor tipe =
+      case tipe of
+        Type.Record fields Nothing -> Just (map fst fields)
+        _                          -> Nothing
+
+
+judgeValue :: Env -> Docs.Value -> Docs.Value -> Verdict
+judgeValue env (Docs.Value _ oldType) (Docs.Value _ newType) =
+  judgeType (expandOld env oldType) (expandNew env newType)
+
+
+judgeBinop :: Env -> Docs.Binop -> Docs.Binop -> Verdict
+judgeBinop env (Docs.Binop _ oldType oldAssoc oldPrec) (Docs.Binop _ newType newAssoc newPrec)
+  | oldAssoc /= newAssoc || oldPrec /= newPrec = Breaking
+  | otherwise = judgeType (expandOld env oldType) (expandNew env newType)
+
+
+-- The type of an exposed value can change in two compatible ways: renaming
+-- its type variables, or becoming more general. Elm only has rank-1
+-- polymorphism, so every use of the old type is still a valid use of a more
+-- general one, and that is a MINOR change.
+--
+judgeType :: Type.Type -> Type.Type -> Verdict
+judgeType oldType newType
+  | (judgeRenaming <$> diffType oldType newType) == Just Same = Same
+  | isInstanceOf oldType newType = Compatible
+  | otherwise = Breaking
 
 
 
@@ -221,12 +278,14 @@ isSameName oldFullName newFullName =
         oldFullName == newFullName
 
 
+-- Record types are unordered, so fields are compared by name. (Field order
+-- only matters for record constructors, see judgeRecordConstructor.)
+--
 diffFields :: [(N.Name, Type.Type)] -> [(N.Name, Type.Type)] -> Maybe [(T.Var,T.Var)]
 diffFields oldRawFields newRawFields =
   let
-    sort = List.sortBy (compare `on` fst)
-    oldFields = sort oldRawFields
-    newFields = sort newRawFields
+    oldFields = sortFields oldRawFields
+    newFields = sortFields newRawFields
   in
     if length oldRawFields /= length newRawFields then
       Nothing
@@ -238,12 +297,21 @@ diffFields oldRawFields newRawFields =
       concat <$> zipWithM (diffType `on` snd) oldFields newFields
 
 
+sortFields :: [(N.Name, a)] -> [(N.Name, a)]
+sortFields =
+  List.sortBy (compare `on` fst)
+
+
 
 -- TYPE VARIABLES
 
 
-isEquivalentRenaming :: [(T.Var,T.Var)] -> Bool
-isEquivalentRenaming varPairs =
+-- The old type variables must map one-to-one onto the new ones. If every
+-- variable keeps its constraint, nothing changed. If some constraint got
+-- looser (comparable to a, number to comparable, ...) the change is compatible.
+--
+judgeRenaming :: [(T.Var,T.Var)] -> Verdict
+judgeRenaming varPairs =
   let
     renamings =
       Map.toList (foldr insert Map.empty varPairs)
@@ -266,23 +334,284 @@ isEquivalentRenaming varPairs =
       length list == Set.size (Set.fromList list)
   in
     case mapM verify renamings of
-      Nothing ->
-        False
+      Just verifiedRenamings | allUnique (map snd verifiedRenamings) ->
+        maximum (Same : map judgeConstraint verifiedRenamings)
 
-      Just verifiedRenamings ->
-        all compatibleVars verifiedRenamings
-        &&
-        allUnique (map snd verifiedRenamings)
+      _ ->
+        Breaking
 
 
-compatibleVars :: (T.Var, T.Var) -> Bool
-compatibleVars (T.Var _ old, T.Var _ new) =
-  case old of
-    T.Any        -> case new of { T.Any -> True ; T.Comparable -> False ; T.Appendable -> False ; T.CompAppend -> False ; T.Number -> False }
-    T.CompAppend -> case new of { T.Any -> True ; T.Comparable -> False ; T.Appendable -> False ; T.CompAppend -> True  ; T.Number -> False }
-    T.Comparable -> case new of { T.Any -> True ; T.Comparable -> True  ; T.Appendable -> False ; T.CompAppend -> False ; T.Number -> False }
-    T.Appendable -> case new of { T.Any -> True ; T.Comparable -> False ; T.Appendable -> True  ; T.CompAppend -> False ; T.Number -> False }
-    T.Number     -> case new of { T.Any -> True ; T.Comparable -> True  ; T.Appendable -> False ; T.CompAppend -> False ; T.Number -> True  }
+judgeConstraint :: (T.Var, T.Var) -> Verdict
+judgeConstraint (T.Var _ old, T.Var _ new) =
+  case (constraintRank old, constraintRank new) of
+    (o, n) | o == n -> Same
+    (_, 0)          -> Compatible  -- anything -> a
+    (4, 1)          -> Compatible  -- compappend -> comparable
+    (4, 2)          -> Compatible  -- compappend -> appendable
+    (3, 1)          -> Compatible  -- number -> comparable
+    _               -> Breaking
+
+
+constraintRank :: T.Constraint -> Int
+constraintRank constraint =
+  case constraint of
+    T.Any        -> 0
+    T.Comparable -> 1
+    T.Appendable -> 2
+    T.Number     -> 3
+    T.CompAppend -> 4
+
+
+
+-- MORE GENERAL TYPES
+
+
+-- Is `oldType` an instance of `newType`? That is, can the type variables of
+-- `newType` be filled in (respecting their constraints) to get `oldType`?
+-- Type variables of `oldType` are treated as fixed.
+--
+isInstanceOf :: Type.Type -> Type.Type -> Bool
+isInstanceOf oldType newType =
+  case match newType oldType Map.empty of
+    Nothing ->
+      False
+
+    Just subst ->
+      all (\(T.Var _ constraint, tipe) -> satisfies constraint tipe) (Map.toList subst)
+
+
+type Subst =
+  Map.Map T.Var Type.Type
+
+
+match :: Type.Type -> Type.Type -> Subst -> Maybe Subst
+match general specific subst =
+  case (general, specific) of
+    (Type.Var var, _) ->
+      bind var specific subst
+
+    (Type.Lambda a b, Type.Lambda a' b') ->
+      match a a' subst >>= match b b'
+
+    (Type.Type name args, Type.Type name' args') ->
+      if isSameName name' name && length args == length args' then
+        matchAll args args' subst
+      else
+        Nothing
+
+    (Type.Record fields ext, Type.Record fields' ext') ->
+      let
+        specificFields = Map.fromList fields'
+        rest = Map.toList (Map.difference specificFields (Map.fromList fields))
+        bindExt s =
+          case (ext, rest, ext') of
+            (Nothing, [], Nothing) -> Just s
+            (Nothing, _ , _      ) -> Nothing
+            (Just r , [], Just v ) -> bind r (Type.Var v) s
+            (Just r , _ , _      ) -> bind r (Type.Record rest ext') s
+      in
+        do  pairs <- traverse (\(field, tipe) -> (,) tipe <$> Map.lookup field specificFields) fields
+            s <- matchAll (map fst pairs) (map snd pairs) subst
+            bindExt s
+
+    (Type.Unit, Type.Unit) ->
+      Just subst
+
+    (Type.Tuple a b cs, Type.Tuple a' b' cs') ->
+      if length cs == length cs' then
+        matchAll (a:b:cs) (a':b':cs') subst
+      else
+        Nothing
+
+    (_, _) ->
+      Nothing
+
+
+matchAll :: [Type.Type] -> [Type.Type] -> Subst -> Maybe Subst
+matchAll generals specifics subst =
+  foldM (\s (g, t) -> match g t s) subst (zip generals specifics)
+
+
+bind :: T.Var -> Type.Type -> Subst -> Maybe Subst
+bind var tipe subst =
+  case Map.lookup var subst of
+    Nothing ->
+      Just (Map.insert var tipe subst)
+
+    Just bound ->
+      if sameType bound tipe then Just subst else Nothing
+
+
+satisfies :: T.Constraint -> Type.Type -> Bool
+satisfies constraint tipe =
+  case constraint of
+    T.Any        -> True
+    T.Number     -> isNamed "Basics" "Int" tipe || isNamed "Basics" "Float" tipe || hasVarIn [3] tipe
+    T.Comparable -> isComparable tipe
+    T.Appendable -> isNamed "String" "String" tipe || isList (const True) tipe || hasVarIn [2,4] tipe
+    T.CompAppend -> isNamed "String" "String" tipe || isList isComparable tipe || hasVarIn [4] tipe
+
+
+isComparable :: Type.Type -> Bool
+isComparable tipe =
+  case tipe of
+    Type.Tuple a b cs -> all isComparable (a:b:cs)
+    _ ->
+      any (\(home, name) -> isNamed home name tipe)
+        [ ("Basics","Int"), ("Basics","Float"), ("Char","Char"), ("String","String") ]
+      || isList isComparable tipe
+      || hasVarIn [1,3,4] tipe
+
+
+isList :: (Type.Type -> Bool) -> Type.Type -> Bool
+isList isOk tipe =
+  case tipe of
+    Type.Type name [arg] -> isSameName name (qualified "List" "List") && isOk arg
+    _                    -> False
+
+
+isNamed :: String -> String -> Type.Type -> Bool
+isNamed home name tipe =
+  case tipe of
+    Type.Type n [] -> isSameName n (qualified home name)
+    _              -> False
+
+
+hasVarIn :: [Int] -> Type.Type -> Bool
+hasVarIn ranks tipe =
+  case tipe of
+    Type.Var (T.Var _ constraint) -> elem (constraintRank constraint) ranks
+    _                             -> False
+
+
+qualified :: String -> String -> T.Name
+qualified home name =
+  T.nameFromString (S.fromChars (home ++ "." ++ name))
+
+
+sameType :: Type.Type -> Type.Type -> Bool
+sameType t1 t2 =
+  case (t1, t2) of
+    (Type.Var a, Type.Var b) -> a == b
+    (Type.Lambda a b, Type.Lambda a' b') -> sameType a a' && sameType b b'
+    (Type.Type n as, Type.Type n' as') -> n == n' && sameTypes as as'
+    (Type.Record fs e, Type.Record fs' e') ->
+      e == e'
+      && map fst (sortFields fs) == map fst (sortFields fs')
+      && sameTypes (map snd (sortFields fs)) (map snd (sortFields fs'))
+    (Type.Unit, Type.Unit) -> True
+    (Type.Tuple a b cs, Type.Tuple a' b' cs') -> sameTypes (a:b:cs) (a':b':cs')
+    (_, _) -> False
+
+
+sameTypes :: [Type.Type] -> [Type.Type] -> Bool
+sameTypes ts ts' =
+  length ts == length ts' && and (zipWith sameType ts ts')
+
+
+
+-- ALIASES
+--
+-- Types are compared after expanding the aliases defined in the package
+-- itself, so `f : Int -> Int` and `f : UserId -> Int` are the same API when
+-- `type alias UserId = Int`.
+
+
+data Env =
+  Env
+    { _old_aliases :: AliasTable
+    , _new_aliases :: AliasTable
+    }
+
+
+type AliasTable =
+  Map.Map T.Name ([T.Var], Type.Type)
+
+
+toAliasTable :: Docs.Documentation -> AliasTable
+toAliasTable docs =
+  Map.fromList
+    [ ( T.nameFromString (S.join (Module.toString home) 0x2E#Word8 {-.-} (T.nameToString name))
+      , (vars, tipe)
+      )
+    | (home, Docs.Module _ _ _ aliases _ _) <- Map.toList docs
+    , (name, Docs.Alias _ vars tipe) <- Map.toList aliases
+    ]
+
+
+expandOld :: Env -> Type.Type -> Type.Type
+expandOld (Env table _) =
+  expand table (100 :: Int)
+
+
+expandNew :: Env -> Type.Type -> Type.Type
+expandNew (Env _ table) =
+  expand table (100 :: Int)
+
+
+-- `fuel` guards against cyclic aliases in malformed docs.json files
+expand :: AliasTable -> Int -> Type.Type -> Type.Type
+expand table fuel tipe =
+  let
+    go = expand table fuel
+  in
+  case tipe of
+    Type.Lambda a b ->
+      Type.Lambda (go a) (go b)
+
+    Type.Var _ ->
+      tipe
+
+    Type.Type name args ->
+      let
+        expandedArgs = map go args
+      in
+        case Map.lookup name table of
+          Just (vars, body) | fuel > 0 && length vars == length args ->
+            expand table (fuel - 1) (substitute (Map.fromList (zip vars expandedArgs)) body)
+
+          _ ->
+            Type.Type name expandedArgs
+
+    Type.Record fields ext ->
+      Type.Record (map (fmap go) fields) ext
+
+    Type.Unit ->
+      Type.Unit
+
+    Type.Tuple a b cs ->
+      Type.Tuple (go a) (go b) (map go cs)
+
+
+substitute :: Subst -> Type.Type -> Type.Type
+substitute subst tipe =
+  let
+    go = substitute subst
+  in
+  case tipe of
+    Type.Lambda a b ->
+      Type.Lambda (go a) (go b)
+
+    Type.Var var ->
+      Map.findWithDefault tipe var subst
+
+    Type.Type name args ->
+      Type.Type name (map go args)
+
+    Type.Record fields ext ->
+      let
+        newFields = map (fmap go) fields
+      in
+        case ext >>= \var -> Map.lookup var subst of
+          Just (Type.Record moreFields moreExt) -> Type.Record (newFields ++ moreFields) moreExt
+          Just (Type.Var var)                   -> Type.Record newFields (Just var)
+          _                                     -> Type.Record newFields ext
+
+    Type.Unit ->
+      Type.Unit
+
+    Type.Tuple a b cs ->
+      Type.Tuple (go a) (go b) (map go cs)
 
 
 
@@ -323,11 +652,11 @@ moduleChangeMagnitude (ModuleChanges unions aliases values binops) =
 
 
 changeMagnitude :: Changes k v -> M.Magnitude
-changeMagnitude (Changes added changed removed) =
+changeMagnitude (Changes added changed compatible removed) =
   if Map.size removed > 0 || Map.size changed > 0 then
     M.MAJOR
 
-  else if Map.size added > 0 then
+  else if Map.size added > 0 || Map.size compatible > 0 then
     M.MINOR
 
   else

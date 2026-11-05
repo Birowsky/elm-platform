@@ -15,6 +15,7 @@ module Elm.Compiler.Type
 
 
 import qualified AST.Source as Src
+import qualified AST.Prim.Module as Module
 import qualified AST.Prim.Name as N
 import qualified AST.Prim.TypeName as T
 import qualified AST.Prim.TypeVar as T
@@ -28,6 +29,7 @@ import qualified Reporting.Annotation as A
 import qualified Reporting.Doc as D
 import qualified Reporting.Render.Type as RT
 import qualified Reporting.Render.Type.Localizer as L
+import qualified String as S
 
 
 
@@ -149,14 +151,22 @@ fromRawType (A.At _ astType) =
     Src.TType _ name args ->
         Type name (map fromRawType args)
 
-    Src.TTypeQual _ _ name args ->
-        Type name (map fromRawType args)
+    Src.TTypeQual _ home name args ->
+        -- keep the module, like Extract.toPublicName does for fresh docs,
+        -- so that Deps.Diff can tell Foo.Thing and Bar.Thing apart
+        Type (qualify home name) (map fromRawType args)
 
     Src.TRecord fields ext ->
         let fromField (A.At _ field, tipe) = (field, fromRawType tipe) in
         Record
           (map fromField fields)
           (fmap A.toValue ext)
+
+
+
+qualify :: Module.Prefix -> T.Name -> T.Name
+qualify home name =
+  T.nameFromString (S.fromChars (Module.prefixToChars home ++ "." ++ T.nameToChars name))
 
 
 

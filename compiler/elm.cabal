@@ -12,11 +12,7 @@ license: BSD-3-Clause
 license-file: LICENSE
 
 
-executable elm
-    ghc-options: -O2 -rtsopts -threaded "-with-rtsopts=-N -qg -A128m" -Wall -Werror
-        -- add -eventlog for (elm make src/Main.elm +RTS -l; threadscope elm.eventlog)
-        -- https://www.oreilly.com/library/view/parallel-and-concurrent/9781449335939/
-
+common deps
     build-depends:
         ansi-terminal,
         ansi-wl-pprint < 1,
@@ -51,6 +47,13 @@ executable elm
         utf8-string,
         vector,
         zip-archive
+
+
+executable elm
+    import: deps
+    ghc-options: -O2 -rtsopts -threaded "-with-rtsopts=-N -qg -A128m" -Wall -Werror
+        -- add -eventlog for (elm make src/Main.elm +RTS -l; threadscope elm.eventlog)
+        -- https://www.oreilly.com/library/view/parallel-and-concurrent/9781449335939/
 
     hs-source-dirs:
         compiler/src
@@ -230,3 +233,94 @@ executable elm
         -- helpers
         Data.List.Utils
         Data.Map.Utils
+
+
+-- Tests for the API diff behind `elm diff`, `elm bump`, and `elm publish`.
+-- Run with: cabal test
+test-suite diff
+    import: deps
+    type: exitcode-stdio-1.0
+    ghc-options: -Wall -Werror
+    hs-source-dirs:
+        tests
+        compiler/src
+        builder/src
+        src/utils
+    main-is:
+        DiffTest.hs
+
+    other-modules:
+        AST.Canonical
+        AST.Prim.Module
+        AST.Prim.Name
+        AST.Prim.Operator
+        AST.Prim.TypeName
+        AST.Prim.TypeVar
+        AST.Prim.Variable
+        AST.Source
+        AST.Utils.Shader
+        AST.Utils.Type
+        Array
+        Buffer
+        Bytes
+        Bytes.Decode
+        Bytes.Encode
+        Crash
+        Data.Bag
+        Data.Index
+        Data.Map.Utils
+        Data.NonEmptyList
+        Data.OneOrMore
+        Data.Utf8
+        Deps.Diff
+        Deps.Website
+        Elm.Compiler.Type
+        Elm.Compiler.Type.Extract
+        Elm.Constraint
+        Elm.Docs
+        Elm.Float
+        Elm.Interface
+        Elm.Magnitude
+        Elm.ModuleName
+        Elm.Package
+        Elm.String
+        Elm.Version
+        File
+        Graph
+        Http
+        Json.Decode
+        Json.Encode
+        Json.String
+        Literals
+        Nitpick.PatternMatches
+        Parse.Keyword_TH
+        Parse.Primitives
+        Parse.Space
+        Parse.Symbol
+        Parse.Type
+        Parse.Variable
+        Paths_elm
+        Reporting.Annotation
+        Reporting.Doc
+        Reporting.Error
+        Reporting.Error.Canonicalize
+        Reporting.Error.Docs
+        Reporting.Error.Import
+        Reporting.Error.Json
+        Reporting.Error.Main
+        Reporting.Error.Pattern
+        Reporting.Error.Syntax
+        Reporting.Error.Type
+        Reporting.Exit
+        Reporting.Exit.Help
+        Reporting.Render.Code
+        Reporting.Render.Type
+        Reporting.Render.Type.Localizer
+        Reporting.Report
+        Reporting.Result
+        Reporting.Suggest
+        Reporting.Warning
+        Root
+        String
+        ThreadSafe.Fork
+        Type.Error

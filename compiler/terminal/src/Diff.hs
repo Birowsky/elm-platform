@@ -270,28 +270,29 @@ changesToChunk localizer (name, changes@(ModuleChanges unions aliases values bin
     magnitude =
       DD.moduleChangeMagnitude changes
 
-    (unionAdd, unionChange, unionRemove) =
-      changesToDocTriple (unionToDoc localizer) unions
+    (unionAdd, unionChange, unionCompat, unionRemove) =
+      changesToDocs (unionToDoc localizer) unions
 
-    (aliasAdd, aliasChange, aliasRemove) =
-      changesToDocTriple (aliasToDoc localizer) aliases
+    (aliasAdd, aliasChange, aliasCompat, aliasRemove) =
+      changesToDocs (aliasToDoc localizer) aliases
 
-    (valueAdd, valueChange, valueRemove) =
-      changesToDocTriple (valueToDoc localizer) values
+    (valueAdd, valueChange, valueCompat, valueRemove) =
+      changesToDocs (valueToDoc localizer) values
 
-    (binopAdd, binopChange, binopRemove) =
-      changesToDocTriple (binopToDoc localizer) binops
+    (binopAdd, binopChange, binopCompat, binopRemove) =
+      changesToDocs (binopToDoc localizer) binops
   in
     Chunk (Module.toChars name) magnitude $
       D.vcat $ List.intersperse "" $ Maybe.catMaybes $
         [ changesToDoc "Added" unionAdd aliasAdd valueAdd binopAdd
         , changesToDoc "Removed" unionRemove aliasRemove valueRemove binopRemove
         , changesToDoc "Changed" unionChange aliasChange valueChange binopChange
+        , changesToDoc "Changed, but compatible" unionCompat aliasCompat valueCompat binopCompat
         ]
 
 
-changesToDocTriple :: (k -> v -> D.Doc) -> Changes k v -> ([D.Doc], [D.Doc], [D.Doc])
-changesToDocTriple entryToDoc (Changes added changed removed) =
+changesToDocs :: (k -> v -> D.Doc) -> Changes k v -> ([D.Doc], [D.Doc], [D.Doc], [D.Doc])
+changesToDocs entryToDoc (Changes added changed compatible removed) =
   let
     indented (name, value) =
       D.indent 4 (entryToDoc name value)
@@ -305,6 +306,7 @@ changesToDocTriple entryToDoc (Changes added changed removed) =
   in
     ( map indented (Map.toList added)
     , map diffed   (Map.toList changed)
+    , map diffed   (Map.toList compatible)
     , map indented (Map.toList removed)
     )
 
