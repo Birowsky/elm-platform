@@ -1,0 +1,90 @@
+// What this install of the platform is: its version, its compiler, its patched packages and where it keeps them.
+
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+export {
+  bundledPackages,
+  compilerVersion,
+  elmHome,
+  platformInputs,
+  toBinary,
+  toStamp,
+  usesCallersHome,
+  version,
+}
+
+const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..')
+const { version } = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
+const compilerVersion = version.replace(/-.*$/, '') // the npm version 0.19.3-1 carries Elm 0.19.3
+const devRoot = process.env.ELM_PLATFORM_DEV ? resolve(process.env.ELM_PLATFORM_DEV) : undefined // a checkout of this repo, to try changes without releasing them
+const packagesDir = join(devRoot ?? packageDir, 'packages')
+
+function usesCallersHome() {
+  return process.env.ELM_HOME !== undefined
+}
+
+/** Patched packages keep the version they patch, so they can't share `~/.elm` with projects that expect the stock code. */
+function elmHome() {
+  return process.env.ELM_HOME ?? join(toNodeModules(), '.cache/elm-platform/home')
+
+  function toNodeModules() {
+    const parts = packageDir.split(sep)
+    const index = parts.lastIndexOf('node_modules')
+    return index === -1 ? join(packageDir, 'node_modules') : parts.slice(0, index + 1).join(sep)
+  }
+}
+
+function toBinary() {
+  const local = devRoot && join(devRoot, '.dev/elm') // `npm run build:compiler` puts it there
+  return local && existsSync(local) ? local : toPublishedBinary()
+
+  function toPublishedBinary() {
+    const name = `@elm_binaries/${process.platform}_${process.arch}/${process.platform === 'win32' ? 'elm.exe' : 'elm'}`
+    try {
+      return createRequire(import.meta.url).resolve(name)
+    } catch {
+      throw new Error(`@birowsky/elm-platform has no compiler for this machine: ${name} is not installed.`)
+    }
+  }
+}
+
+function bundledPackages() {
+  return existsSync(packagesDir) ? toDirectories(packagesDir).flatMap(toDirectories).map(toBundledPackage) : []
+
+  function toDirectories(dir) {
+    return readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => join(dir, entry.name))
+  }
+
+  function toBundledPackage(dir) {
+    const { name, version } = JSON.parse(readFileSync(join(dir, 'elm.json'), 'utf8'))
+    return { name, version, dir }
+  }
+}
+
+/** Changes whenever compiled output could: every cache made under another stamp is stale. */
+function toStamp() {
+  return devRoot ? `dev:${toDevHash()}` : `release:${version}`
+
+  function toDevHash() {
+    const hash = createHash('sha256')
+    platformInputs().forEach(file => hash.update(file).update(readFileSync(file)))
+    return hash.digest('hex')
+  }
+}
+
+/** The files that decide what the compiler produces, for tools that cache its output, like webpack. */
+function platformInputs() {
+  return devRoot ? [...toPackageFiles(), toBinary()] : [join(packageDir, 'package.json')]
+
+  function toPackageFiles() {
+    return bundledPackages().flatMap(({ dir }) => [join(dir, 'elm.json'), ...toFilesIn(join(dir, 'src'))])
+  }
+
+  function toFilesIn(dir) {
+    return readdirSync(dir, { recursive: true }).map(file => join(dir, file)).filter(path => statSync(path).isFile()).sort()
+  }
+}

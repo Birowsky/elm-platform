@@ -7,3 +7,4 @@ elm-stuff
 .DS_Store
 test-results
 playwright-report
+npm/elm-platform/packages

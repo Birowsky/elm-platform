@@ -1,0 +1,48 @@
+{
+  "name": "@birowsky/elm-platform",
+  "version": "0.19.3-1",
+  "description": "An unofficial Elm distribution: the Elm compiler plus patched core libraries, released as one tested version. Not affiliated with the Elm project.",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Birowsky/elm-platform.git",
+    "directory": "npm/elm-platform"
+  },
+  "keywords": [
+    "elm",
+    "compiler"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "elm": "bin/elm.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "packages",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prepack": "node scripts/copy-packages.js",
+    "postpack": "node scripts/remove-packages.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "optionalDependencies": {
+    "@elm_binaries/darwin_arm64": "0.19.3-0",
+    "@elm_binaries/darwin_x64": "0.19.3-0",
+    "@elm_binaries/linux_arm64": "0.19.3-0",
+    "@elm_binaries/linux_x64": "0.19.3-0",
+    "@elm_binaries/win32_x64": "0.19.3-0"
+  }
+}
