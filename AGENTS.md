@@ -46,8 +46,9 @@ To patch another package, add it as a subtree at the version apps use, `git subt
 
 1. `node scripts/set-version.js 0.19.3-N`: the Elm version plus a counter, the same on every package.
 2. Update the table in `npm/elm-platform/README.md`.
-3. Commit, tag `v0.19.3-N`, push. `.github/workflows/release.yaml` builds what changed, runs the tests on every platform and publishes, through npm's trusted publishing: there is no token.
-4. In each app, set the exact version. Its own CI is the last check, and reverting that line is the rollback.
+3. Commit, tag `v0.19.3-N`, push both. `.github/workflows/release.yaml` builds what changed, runs the tests on every platform and publishes, through npm's trusted publishing. There is no token, no npm login and no one to ask, so an agent releases this way too. Re-running a failed publish job skips what is already on npm.
+4. Wait for the version: npm can take about 15 minutes after the job ends, and `npm view` answers 404 until then.
+5. In each app, set the exact version. Its own CI is the last check, and reverting that line is the rollback.
 
 A package new to npm, such as one for a new platform, can't be published by the workflow until the owner of the npm account has run `node scripts/trust-packages.js` for it, with their 2FA. Tag within 2 days of that, because npm expires a trust setting that goes unused.
 
