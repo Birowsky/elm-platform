@@ -1,7 +1,7 @@
 name: Release
 
 # Pushing a tag vX, where X is the version in npm/elm-platform/package.json, tests the release on every platform it ships for and publishes it.
-# Needs the NPM_TOKEN secret: an npm automation token with write access to the @birowsky scope.
+# There is no npm token: through trusted publishing, npm trusts this workflow file in this repository, package by package. `node scripts/trust-packages.js` sets that up.
 on:
   push:
     tags:
@@ -57,6 +57,9 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # how this workflow proves to npm which workflow it is
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -66,6 +69,7 @@ jobs:
         with:
           node-version: 26
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false # what gets published depends on no cache
 
       - name: Take the tested binaries
         uses: actions/download-artifact@v4
@@ -74,5 +78,3 @@ jobs:
 
       - name: Publish
         run: node scripts/publish.js
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

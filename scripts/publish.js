@@ -37,5 +37,5 @@ function publish(dir) {
 }
 
 function isPublished(name) {
-  return spawnSync('npm', ['view', `${name}@${version}`, 'version'], { encoding: 'utf8' }).stdout.trim() === version
+  return spawnSync('npm', ['view', `${name}@${version}`, 'version', '--userconfig=/dev/null'], { encoding: 'utf8' }).stdout.trim() === version // anonymously: setup-node's .npmrc holds a placeholder token, which only publishing replaces
 }
