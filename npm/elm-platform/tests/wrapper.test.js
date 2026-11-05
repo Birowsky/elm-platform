@@ -20,7 +20,7 @@ let warmPackages // a home every test starts from, so that only the first compil
 
 before(() => {
   const app = toApp(toInstall('warm'))
-  assert.equal(run(app).status, 0)
+  assertCompiled(run(app))
   warmPackages = join(app.install, 'node_modules/.cache/elm-platform/home/0.19.3/packages')
 })
 
@@ -29,7 +29,7 @@ after(() => rmSync(scratch, { recursive: true, force: true }))
 test('puts the patched package in its own home and leaves ~/.elm alone', () => {
   const app = toApp(toWarmInstall('own-home'))
   const result = run(app)
-  assert.equal(result.status, 0, result.stderr)
+  assertCompiled(result)
   assert.match(toOutput(app), /_VirtualDom_lazyShallow/)
   assert.equal(existsSync(join(app.install, 'user-home/.elm')), false)
 })
@@ -46,7 +46,7 @@ test('refuses a project pinned to another version of a patched package', () => {
 test('accepts a patched package pinned as an indirect dependency', () => {
   const app = toApp(toWarmInstall('indirect-pin'), { pin: undefined, source: 'module Main exposing (main)\nimport Html\nmain = Html.text "hi"\n' })
   const result = run(app)
-  assert.equal(result.status, 0, result.stderr)
+  assertCompiled(result)
 })
 
 test('refuses another version of a patched package among the indirect dependencies too', () => {
@@ -61,7 +61,7 @@ test('refuses another version of a patched package among the indirect dependenci
 test('lets projects generated inside elm-stuff pin what they like', () => {
   const app = toApp(toWarmInstall('generated'), { pin: '1.0.3', at: 'elm-stuff/generated-code/tool', source: 'module Main exposing (main)\nimport Html\nmain = Html.text "hi"\n' })
   const result = run(app)
-  assert.equal(result.status, 0, result.stderr)
+  assertCompiled(result)
 })
 
 test('a home named by the caller is used as it is', () => {
@@ -77,18 +77,18 @@ test('a home named by the caller is used as it is', () => {
 
 test('a new release replaces the packages and everything compiled from them', () => {
   const app = toApp(toWarmInstall('upgrade'))
-  assert.equal(run(app).status, 0)
+  assertCompiled(run(app))
   release(app.install, '0.19.3-999', 'var _Marker_upgrade = 1;')
   const result = run(app)
-  assert.equal(result.status, 0, result.stderr)
+  assertCompiled(result)
   assert.match(toOutput(app), /_Marker_upgrade/)
 })
 
 test('the same release does not recompile anything', () => {
   const app = toApp(toWarmInstall('same-release'))
-  assert.equal(run(app).status, 0)
+  assertCompiled(run(app))
   appendFileSync(join(app.install, 'node_modules/@birowsky/elm-platform/packages', kernel), 'var _Marker_ignored = 1;\n') // a released package does not change, so nothing looks
-  assert.equal(run(app).status, 0)
+  assertCompiled(run(app))
   assert.doesNotMatch(toOutput(app), /_Marker_ignored/)
 })
 
@@ -97,11 +97,11 @@ test('with ELM_PLATFORM_DEV, an edit in the checkout counts on the next compile'
   const checkout = join(app.install, 'checkout')
   cpSync(join(app.install, 'node_modules/@birowsky/elm-platform/packages'), join(checkout, 'packages'), { recursive: true })
   const env = { ELM_PLATFORM_DEV: checkout }
-  assert.equal(run(app, env).status, 0)
+  assertCompiled(run(app, env))
   assert.doesNotMatch(toOutput(app), /_Marker_dev/)
   appendFileSync(join(checkout, 'packages', kernel), 'var _Marker_dev = 1;\n')
   const result = run(app, env)
-  assert.equal(result.status, 0, result.stderr)
+  assertCompiled(result)
   assert.match(toOutput(app), /_Marker_dev/)
 })
 
@@ -131,6 +131,10 @@ test('platformInputs names what decides compiled output', async () => {
   assert.ok(toInputs({ ELM_PLATFORM_DEV: checkout }).some(file => file.endsWith('src/Elm/Kernel/VirtualDom.js')))
 })
 
+
+function assertCompiled(result) {
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+}
 
 function toInstall(name) {
   const install = join(scratch, name)
