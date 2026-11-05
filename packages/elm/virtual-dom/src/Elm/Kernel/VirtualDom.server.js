@@ -80,6 +80,11 @@ var _VirtualDom_keyedNodeNS = F2(function(namespace, tag)
 
 var _VirtualDom_keyedNode = _VirtualDom_keyedNodeNS(undefined);
 
+var _VirtualDom_keyedLayers = F4(function(tag, followed, factList, kidList)
+{
+	return A2(_VirtualDom_keyedNode(tag), factList, kidList);
+});
+
 
 // CUSTOM
 

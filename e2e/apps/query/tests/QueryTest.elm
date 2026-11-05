@@ -43,6 +43,17 @@ suite =
                 Views.keyed
                     |> Query.fromHtml
                     |> Query.has [ Selector.attribute (Html.Attributes.id "list") ]
+        , test "kids of keyed layers" <|
+            \_ ->
+                Views.keyedLayers
+                    |> Query.fromHtml
+                    |> Query.findAll [ Selector.class "kid" ]
+                    |> Query.count (Expect.equal 2)
+        , test "attributes of keyed layers" <|
+            \_ ->
+                Views.keyedLayers
+                    |> Query.fromHtml
+                    |> Query.has [ Selector.attribute (Html.Attributes.id "layers") ]
         , test "an event inside lazyShallow" <|
             \_ ->
                 Views.shallow

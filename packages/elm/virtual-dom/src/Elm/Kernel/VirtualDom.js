@@ -123,6 +123,22 @@ var _VirtualDom_keyedNode = _VirtualDom_keyedNodeNS(undefined);
 
 
 
+// KEYED LAYERS
+
+
+// Still a keyed node, so that rendering, patching and elm-explorations/test need no
+// case of their own. The extra value is a plain property because adding a kernel
+// field here would renumber the ones after it, and elm-explorations/test hard-codes
+// those. See LAYERS further down for what it changes.
+var _VirtualDom_keyedLayers = F4(function(tag, followed, factList, kidList)
+{
+	var node = A2(_VirtualDom_keyedNode(tag), factList, kidList);
+	node.elm_layers = followed;
+	return node;
+});
+
+
+
 // CUSTOM
 
 
@@ -770,7 +786,7 @@ function _VirtualDom_diffHelp(x, y, patches, index)
 	// structure has changed significantly and it's not worth a diff.
 	if (xType !== yType)
 	{
-		if (xType === __2_NODE && yType === __2_KEYED_NODE)
+		if (xType === __2_NODE && yType === __2_KEYED_NODE && !y.elm_layers)
 		{
 			y = _VirtualDom_dekey(y);
 			yType = __2_NODE;
@@ -903,7 +919,7 @@ function _VirtualDom_diffNodes(x, y, patches, index, diffKids)
 {
 	// Bail if obvious indicators have changed. Implies more serious
 	// structural changes such that it's not worth it to diff.
-	if (x.__tag !== y.__tag || x.__namespace !== y.__namespace)
+	if (x.__tag !== y.__tag || x.__namespace !== y.__namespace || !x.elm_layers !== !y.elm_layers)
 	{
 		_VirtualDom_pushPatch(patches, __3_REDRAW, index, y);
 		return;
@@ -1155,7 +1171,13 @@ function _VirtualDom_diffKeyedKids(xParent, yParent, patches, rootIndex)
 
 			if (target < 0)
 			{
-				_VirtualDom_pushPatch(localPatches, __3_REMOVE, index, undefined);
+				yParent.elm_layers
+					? _VirtualDom_pushPatch(localPatches, __3_EXIT, index, {
+						__key: xKids[start + i].a,
+						__vnode: xNode,
+						__followed: yParent.elm_layers
+					})
+					: _VirtualDom_pushPatch(localPatches, __3_REMOVE, index, undefined);
 			}
 			else if (stays[target])
 			{
@@ -1188,7 +1210,7 @@ function _VirtualDom_diffKeyedKids(xParent, yParent, patches, rootIndex)
 		// Brand new kids at the very end of the list are appended all at once.
 
 		var endStart = yMid;
-		if (yEnd === yLen)
+		if (yEnd === yLen && !yParent.elm_layers) // a new layer may turn out to be an exiting one
 		{
 			while (endStart > 0 && sources[endStart - 1] < 0)
 			{
@@ -1207,7 +1229,8 @@ function _VirtualDom_diffKeyedKids(xParent, yParent, patches, rootIndex)
 				__tag: __5_INSERT,
 				__vnode: yKids[start + j].b,
 				__index: start + j,
-				__data: undefined
+				__data: undefined,
+				__key: yKids[start + j].a
 			};
 
 			j < endStart
@@ -1230,7 +1253,8 @@ function _VirtualDom_diffKeyedKids(xParent, yParent, patches, rootIndex)
 		_VirtualDom_pushPatch(patches, __3_REORDER, rootIndex, {
 			__patches: localPatches,
 			__inserts: inserts,
-			__endInserts: endInserts
+			__endInserts: endInserts,
+			__layers: yParent.elm_layers
 		});
 	}
 }
@@ -1377,7 +1401,7 @@ function _VirtualDom_addDomNodesHelp(domNode, vNode, patches, i, low, high, even
 	// tag must be __2_NODE or __2_KEYED_NODE at this point
 
 	var vKids = vNode.__kids;
-	var childNodes = domNode.childNodes;
+	var childNodes = vNode.elm_layers ? _VirtualDom_liveLayers(domNode) : domNode.childNodes;
 	for (var j = 0; j < vKids.length; j++)
 	{
 		low++;
@@ -1485,6 +1509,10 @@ function _VirtualDom_applyPatch(domNode, patch)
 			}
 			return domNode;
 
+		case __3_EXIT:
+			_VirtualDom_exitLayer(domNode, patch.__data);
+			return domNode;
+
 		case __3_REORDER:
 			return _VirtualDom_applyPatchReorder(domNode, patch);
 
@@ -1525,6 +1553,12 @@ function _VirtualDom_applyPatchReorder(domNode, patch)
 	// patches in place, removals, and detaching kids that move
 	domNode = _VirtualDom_applyPatchesHelp(domNode, data.__patches);
 
+	if (data.__layers)
+	{
+		_VirtualDom_applyLayerInserts(domNode, data.__inserts, patch.__eventNode);
+		return domNode;
+	}
+
 	// inserts and moves, in order of their new position
 	var inserts = data.__inserts;
 	for (var i = 0; i < inserts.length; i++)
@@ -1561,6 +1595,232 @@ function _VirtualDom_applyPatchReorderEndInsertsHelp(endInserts, patch)
 		_VirtualDom_appendChild(frag, _VirtualDom_render(endInserts[i].__entry.__vnode, patch.__eventNode));
 	}
 	return frag;
+}
+
+
+
+// LAYERS
+//
+// The kids of keyed layers that the view drops stay in the DOM until their
+// transition ends. To the virtual DOM they are gone, so they have to be skipped
+// wherever a kid is found by position.
+//
+// The record on an exiting layer holds the vnode its DOM matches. A layer that comes
+// back is diffed from there and patched on the spot, in a diff of its own, because
+// it has no place in the indexes of the diff that found it. That is also why this
+// happens while patching: only the DOM knows what is still exiting.
+//
+// The attribute transition-state says which kids take part. The view writes it as
+// "entering", where a layer rests, so a first render needs no help and no diff ever
+// sees "init" or "exiting".
+
+
+function _VirtualDom_liveLayers(host)
+{
+	var live = [];
+	for (var kid = host.firstChild; kid; kid = kid.nextSibling)
+	{
+		kid.elm_exit || live.push(kid);
+	}
+	return live;
+}
+
+
+function _VirtualDom_transitions(layer)
+{
+	return layer.nodeType === 1 && layer.hasAttribute('transition-state');
+}
+
+
+function _VirtualDom_exitLayer(layer, data)
+{
+	var host = layer.parentNode;
+	var followed = [];
+	var duration = 0;
+
+	_VirtualDom_rememberScroll(host, data.__key, layer);
+
+	if (_VirtualDom_transitions(layer))
+	{
+		for (var names = data.__followed; names.b; names = names.b) // WHILE_CONS
+		{
+			var name = names.a;
+			followed.push({ __key: name, __value: layer.getAttribute(name) });
+			host.hasAttribute(name) && layer.setAttribute(name, host.getAttribute(name));
+		}
+		layer.setAttribute('transition-state', 'exiting');
+		duration = _VirtualDom_toTransitionDuration(layer);
+	}
+
+	if (duration > 0)
+	{
+		layer.elm_exit = {
+			__key: data.__key,
+			__vnode: data.__vnode,
+			__followed: followed,
+			__timer: setTimeout(function() {
+				layer.parentNode && layer.parentNode.removeChild(layer);
+			}, duration)
+		};
+	}
+	else
+	{
+		host.removeChild(layer);
+	}
+}
+
+
+// The time until the last of the layer's own transitions has ended. A computed time
+// is always in seconds, and on an element outside the document it is empty.
+function _VirtualDom_toTransitionDuration(layer)
+{
+	var style = window.getComputedStyle(layer);
+	var durations = style.getPropertyValue('transition-duration').split(',');
+	var delays = style.getPropertyValue('transition-delay').split(',');
+	var longest = 0;
+	for (var i = 0; i < durations.length || i < delays.length; i++)
+	{
+		var total = parseFloat(durations[i % durations.length]) + parseFloat(delays[i % delays.length]);
+		longest = total > longest ? total : longest;
+	}
+	return longest * 1000;
+}
+
+
+function _VirtualDom_applyLayerInserts(host, inserts, eventNode)
+{
+	var entering = [];
+
+	for (var i = 0; i < inserts.length; i++)
+	{
+		var entry = inserts[i].__entry;
+		var before = _VirtualDom_liveLayers(host)[inserts[i].__index];
+
+		if (entry.__tag === __5_MOVE)
+		{
+			host.insertBefore(entry.__data, _VirtualDom_toPlaceBelowExiting(before));
+			continue;
+		}
+
+		var exiting = _VirtualDom_findExiting(host, entry.__key);
+		var layer = exiting
+			? _VirtualDom_reviveLayer(exiting, entry.__vnode, eventNode)
+			: _VirtualDom_render(entry.__vnode, eventNode);
+		var transitions = _VirtualDom_transitions(layer);
+
+		if (layer === exiting && _VirtualDom_toNextLiveLayer(layer) === before)
+		{
+			transitions && layer.setAttribute('transition-state', 'entering'); // the running transition turns around
+			continue;
+		}
+
+		// new to the document, so it has no style to transition from
+		if (transitions)
+		{
+			layer.setAttribute('transition-state', 'init');
+			entering.push(layer);
+		}
+		host.insertBefore(layer, _VirtualDom_toPlaceBelowExiting(before));
+		_VirtualDom_restoreScroll(host, entry.__key, layer);
+	}
+
+	if (entering.length > 0)
+	{
+		// Without a computed style to start from, going to "entering" starts no
+		// transition. A call, because a minifier may drop a read of a property.
+		window.getComputedStyle(entering[0]).getPropertyValue('opacity');
+
+		for (var i = 0; i < entering.length; i++)
+		{
+			entering[i].setAttribute('transition-state', 'entering');
+		}
+	}
+}
+
+
+function _VirtualDom_reviveLayer(layer, vNode, eventNode)
+{
+	var exit = layer.elm_exit;
+	clearTimeout(exit.__timer);
+	layer.elm_exit = undefined;
+
+	// the DOM has to match the vnode that the diff starts from
+	for (var i = 0; i < exit.__followed.length; i++)
+	{
+		var attr = exit.__followed[i];
+		attr.__value === null
+			? layer.removeAttribute(attr.__key)
+			: layer.setAttribute(attr.__key, attr.__value);
+	}
+
+	return _VirtualDom_applyPatches(layer, exit.__vnode, _VirtualDom_diff(exit.__vnode, vNode), eventNode);
+}
+
+
+function _VirtualDom_findExiting(host, key)
+{
+	for (var kid = host.firstChild; kid; kid = kid.nextSibling)
+	{
+		if (kid.elm_exit && kid.elm_exit.__key === key)
+		{
+			return kid;
+		}
+	}
+}
+
+
+function _VirtualDom_toNextLiveLayer(layer)
+{
+	var next = layer.nextSibling;
+	while (next && next.elm_exit)
+	{
+		next = next.nextSibling;
+	}
+	return next || undefined;
+}
+
+
+// A layer goes below any exiting layer it would land right above. So what leaves
+// stays on top of what replaces it, except at the end of the list.
+function _VirtualDom_toPlaceBelowExiting(before)
+{
+	while (before && before.previousSibling && before.previousSibling.elm_exit)
+	{
+		before = before.previousSibling;
+	}
+	return before;
+}
+
+
+function _VirtualDom_toScrollTarget(layer)
+{
+	var selector = layer.nodeType === 1 && layer.getAttribute('scrolling-context-selector');
+	return selector && (layer.matches(selector) ? layer : layer.querySelector(selector));
+}
+
+
+function _VirtualDom_rememberScroll(host, key, layer)
+{
+	var target = _VirtualDom_toScrollTarget(layer);
+	if (target)
+	{
+		var scrolls = host.elm_scrolls || (host.elm_scrolls = Object.create(null));
+		scrolls[key] = { __x: target.scrollLeft, __y: target.scrollTop };
+	}
+}
+
+
+function _VirtualDom_restoreScroll(host, key, layer)
+{
+	var target = _VirtualDom_toScrollTarget(layer);
+	var saved = host.elm_scrolls && host.elm_scrolls[key];
+	if (target && saved)
+	{
+		setTimeout(function() { // custom elements in the layer may only have content once they connect
+			target.scrollLeft = saved.__x;
+			target.scrollTop = saved.__y;
+		});
+	}
 }
 
 

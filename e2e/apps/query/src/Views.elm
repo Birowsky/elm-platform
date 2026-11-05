@@ -1,4 +1,4 @@
-module Views exposing (Msg(..), shallowDeep, keyed, mapped, shallow)
+module Views exposing (Msg(..), shallowDeep, keyed, keyedLayers, mapped, shallow)
 
 import Html exposing (Html, button, div, li, text)
 import Html.Attributes exposing (class, id)
@@ -28,6 +28,16 @@ keyed =
     Html.Keyed.ul [ id "list" ]
         [ ( "a", Html.Lazy.lazy viewKid "a" )
         , ( "b", VirtualDom.lazyShallow viewShallow { label = "b" } )
+        ]
+
+
+keyedLayers : Html Msg
+keyedLayers =
+    VirtualDom.keyedLayers "ul"
+        [ "history" ]
+        [ id "layers" ]
+        [ ( "a", Html.Lazy.lazy viewKid "a" )
+        , ( "b", Html.Lazy.lazy viewKid "b" )
         ]
 
 

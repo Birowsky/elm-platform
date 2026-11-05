@@ -4,7 +4,7 @@ module VirtualDom exposing
   , Attribute, style, property, attribute, attributeNS
   , on, Handler(..)
   , map, mapAttribute
-  , keyedNode, keyedNodeNS
+  , keyedNode, keyedNodeNS, keyedLayers
   , lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
   , lazyShallow, lazyShallowDeep
   )
@@ -25,7 +25,7 @@ that expose more helper functions for HTML or SVG.
 @docs map, mapAttribute
 
 # Keyed Nodes
-@docs keyedNode, keyedNodeNS
+@docs keyedNode, keyedNodeNS, keyedLayers
 
 # Lazy Nodes
 @docs lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
@@ -397,6 +397,56 @@ could be defined like this:
 keyedNodeNS : String -> String -> List (Attribute msg) -> List ( String, Node msg ) -> Node msg
 keyedNodeNS namespace tag =
   Elm.Kernel.VirtualDom.keyedNodeNS namespace (Elm.Kernel.VirtualDom.noScript tag)
+
+
+{-| Works just like `keyedNode`, for a stack of views that come and go with a CSS
+transition. A kid takes part by having the attribute `transition-state` with the
+value `"entering"`:
+
+    keyedLayers "view-stack"
+      [ "history" ]
+      [ attribute "history" "back" ]
+      [ ( "settings"
+        , node "section"
+            [ attribute "transition-state" "entering"
+            , attribute "scrolling-context-selector" ".content"
+            , attribute "class" "slide"
+            ]
+            [ settings ]
+        )
+      ]
+
+From then on that attribute says what the kid is doing, and your CSS goes by it:
+
+  - `"init"` is where a kid added to the stack starts its transition from. A kid
+  that is there on the first render skips it, as nothing is transitioning yet.
+
+  - `"entering"` is where it goes from there, and where it stays.
+
+  - `"exiting"` is what a kid gets when you drop it. It stays in the DOM until the
+  longest transition on the kid itself has ended. To transition something inside it
+  for longer, give the kid a `transition-duration` of that length.
+
+If you add the key of an exiting kid again, that same element goes back to
+`"entering"`, so CSS turns the running transition around. It is patched to match the
+new view, and it keeps its focus, scroll position and everything else. If it comes
+back with another root element, or at another place in the stack, it is a new element
+to the browser, so it starts from `"init"`.
+
+An exiting kid is out of your view, so nothing you write can change it. The list of
+strings names the attributes it copies from this node when it leaves, to let it
+transition according to what the rest of the page is doing, like which way the user
+is navigating. Coming back gives it its own values again.
+
+If a kid has the attribute `scrolling-context-selector`, its scroll position is
+remembered when it leaves, on itself or on the first element in it that the selector
+finds. A new element with the same key gets that position back.
+
+A kid without `transition-state` comes and goes at once, as in `keyedNode`.
+-}
+keyedLayers : String -> List String -> List (Attribute msg) -> List ( String, Node msg ) -> Node msg
+keyedLayers tag =
+  Elm.Kernel.VirtualDom.keyedLayers (Elm.Kernel.VirtualDom.noScript tag)
 
 
 

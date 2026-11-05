@@ -18,7 +18,7 @@ const scratch = join(here, '.tmp')
 const consumer = join(scratch, 'consumer')
 const elmBin = join(consumer, 'node_modules/.bin/elm')
 const homeAfterInstall = join(scratch, 'home-after-install') // only `npm install` ever touches this one, to prove what tools find that never run `elm` themselves
-const browserApps = ['lazy']
+const browserApps = ['lazy', 'layers']
 
 process.env.ELM_HOME = join(scratch, 'home') // never `~/.elm`: a package placed there is never replaced, so a later run with a changed package under the same version would test the old one
 

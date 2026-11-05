@@ -11,7 +11,7 @@ const { JSDOM } = require('jsdom');
 const KERNEL = path.join(__dirname, '..', 'src', 'Elm', 'Kernel', 'VirtualDom.js');
 
 const EXPORTS = [
-  '_VirtualDom_node', '_VirtualDom_keyedNode', '_VirtualDom_text', '_VirtualDom_attribute',
+  '_VirtualDom_node', '_VirtualDom_keyedNode', '_VirtualDom_keyedLayers', '_VirtualDom_text', '_VirtualDom_attribute',
   '_VirtualDom_map', '_VirtualDom_lazy', '_VirtualDom_lazyShallow', '_VirtualDom_lazyShallowDeep',
   '_VirtualDom_render', '_VirtualDom_diff', '_VirtualDom_applyPatches',
 ];
@@ -59,13 +59,14 @@ function load() {
   const k = factory(window, window.document, window.navigator);
 
   const list = xs => xs.reduceRight((tail, x) => ({ $: 1, a: x, b: tail }), { $: 0 });
+  const pairs = kids => list(kids.map(([key, kid]) => ({ $: '#2', a: key, b: kid })));
 
   return {
     window,
     document: window.document,
     node: (tag, attrs, kids) => k._VirtualDom_node(tag).f(list(attrs || []), list(kids || [])),
-    keyed: (tag, attrs, pairs) =>
-      k._VirtualDom_keyedNode(tag).f(list(attrs || []), list(pairs.map(([key, kid]) => ({ $: '#2', a: key, b: kid })))),
+    keyed: (tag, attrs, kids) => k._VirtualDom_keyedNode(tag).f(list(attrs || []), pairs(kids)),
+    keyedLayers: (tag, followed, attrs, kids) => k._VirtualDom_keyedLayers.f(tag, list(followed), list(attrs || []), pairs(kids)),
     text: s => k._VirtualDom_text(s),
     attr: (key, value) => k._VirtualDom_attribute.f(key, value),
     map: (tagger, node) => k._VirtualDom_map.f(tagger, node),
