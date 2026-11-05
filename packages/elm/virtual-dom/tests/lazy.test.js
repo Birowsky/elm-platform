@@ -96,6 +96,50 @@ test('lazyShallow: a skip reuses the node for the next transition too', () => {
   assert.equal(next.dom.textContent, '[{"a":2}]');
 });
 
+test('lazyShallow: a new custom type value with the same fields skips the view', () => {
+  go(start(k.lazyShallow(viewOne, { $: 1, a: 5 })), k.lazyShallow(viewOne, { $: 1, a: 5 }));
+  assert.equal(calls, 0);
+});
+
+test('lazyShallow: another constructor or another field runs the view', () => {
+  const state = start(k.lazyShallow(viewOne, { $: 1, a: 5 }));
+  const otherField = go(state, k.lazyShallow(viewOne, { $: 1, a: 6 }));
+  assert.equal(calls, 1);
+  go(otherField, k.lazyShallow(viewOne, { $: 2, a: 6 }));
+  assert.equal(calls, 1);
+});
+
+test('lazyShallow: two empty records are the same', () => {
+  go(start(k.lazyShallow(viewOne, {})), k.lazyShallow(viewOne, {}));
+  assert.equal(calls, 0);
+});
+
+const fieldless = [ // none of them has fields of its own to compare, so looking for fields alone would call every pair the same
+  ['an Int', 1, 2],
+  ['a Float', 1.5, 2.5],
+  ['a Bool', true, false],
+  ['a String', 'a', 'b'],
+  ['zero and an empty String', 0, ''],
+  ['a function', () => 1, () => 2],
+  ['a null inside a Value', null, 1],
+  ['a Date inside a Value', new Date(1), new Date(2)],
+  ['a RegExp', /a/, /b/],
+  ['an instance of a class, as a File inside a Value is', new (class File {})(), new (class File {})()],
+  ['a JavaScript array inside a Value', [1], [1]],
+];
+
+fieldless.forEach(([name, one, other]) => {
+  test(`lazyShallow: ${name} skips the view when it stays the same`, () => {
+    go(start(k.lazyShallow(viewOne, one)), k.lazyShallow(viewOne, one));
+    assert.equal(calls, 0);
+  });
+
+  test(`lazyShallow: ${name} runs the view when it changes`, () => {
+    go(start(k.lazyShallow(viewOne, one)), k.lazyShallow(viewOne, other));
+    assert.equal(calls, 1);
+  });
+});
+
 test('lazyShallow: works from and to other kinds of node', () => {
   const plain = go(start(k.lazyShallow(viewOne, { a: 1 })), k.node('p', [], [k.text('plain')]));
   assert.equal(plain.dom.outerHTML, '<p>plain</p>');
@@ -161,6 +205,13 @@ test('lazyShallowDeep: runs the view when a field of the record changes', () => 
 
 test('lazyShallowDeep: checks the record by reference even when the second argument is equal', () => {
   go(start(k.lazyShallowDeep(viewTwo, { list: [1] }, 1)), k.lazyShallowDeep(viewTwo, { list: [1] }, 1));
+  assert.equal(calls, 1);
+});
+
+test('lazyShallowDeep: takes a value with no fields as the first argument', () => {
+  const same = go(start(k.lazyShallowDeep(viewTwo, 1, 'x')), k.lazyShallowDeep(viewTwo, 1, 'x'));
+  assert.equal(calls, 0);
+  go(same, k.lazyShallowDeep(viewTwo, 2, 'x'));
   assert.equal(calls, 1);
 });
 

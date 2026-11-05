@@ -29,6 +29,32 @@ import { built } from '../paths.js'
       })
     })
 
+    test.describe('lazyShallow on anything but a record', () => {
+      test('an Int runs the view when it changes', async ({ page }) => {
+        await send(page, 'change-field')
+        await expect(page.locator('#int')).toHaveText('1')
+      })
+
+      test('a Bool runs the view when it changes', async ({ page }) => {
+        await expect(page.locator('#bool')).toHaveText('off')
+        await send(page, 'change-field')
+        await expect(page.locator('#bool')).toHaveText('on')
+      })
+
+      test('a new custom type value with the same fields skips the view', async ({ page }) => {
+        await setStamp(page, 1)
+        await tick(page)
+        await expect(page.locator('#counted-stamp')).toHaveText('0')
+      })
+
+      test('a custom type value runs the view when a field changes', async ({ page }) => {
+        await setStamp(page, 1)
+        await send(page, 'change-field')
+        await expect(page.locator('#counted-field')).toHaveText('1')
+        await expect(page.locator('#counted-stamp')).toHaveText('1')
+      })
+    })
+
     test.describe('lazyShallowDeep', () => {
       test('renders a real element on first use', async ({ page }) => {
         await expect(page.locator('div#shallow-deep')).toBeVisible()

@@ -344,19 +344,19 @@ lazy8 =
   Elm.Kernel.VirtualDom.lazy8
 
 
-{-| Same as `lazy`, for when eight arguments are not enough. Every field of the
-record is checked by reference, as if it were an argument of its own, so you can
-build the record anew on every call.
+{-| Same as `lazy`, for when eight arguments are not enough: pass one record with
+as many fields as you need. Every field is checked by reference, as if it were an
+argument of its own, so you can build the record anew on every call.
 
     lazyShallow viewCard
-        { lazyDummy = ()
-        , card = model.card
+        { card = model.card
         , zone = model.zone
         }
 
-The `lazyDummy` field is what makes the type accept records and nothing else.
+The fields of a custom type value are checked the same way. Any other value has no
+fields, so it is checked by reference itself, as `lazy` does.
 -}
-lazyShallow : ({ a | lazyDummy : () } -> Node msg) -> { a | lazyDummy : () } -> Node msg
+lazyShallow : (a -> Node msg) -> a -> Node msg
 lazyShallow =
   Elm.Kernel.VirtualDom.lazyShallow
 
@@ -368,7 +368,7 @@ rarely changes.
 `(==)` crashes when it reaches two different functions, so keep functions out of
 the second argument.
 -}
-lazyShallowDeep : ({ a | lazyDummy : () } -> b -> Node msg) -> { a | lazyDummy : () } -> b -> Node msg
+lazyShallowDeep : (a -> b -> Node msg) -> a -> b -> Node msg
 lazyShallowDeep =
   Elm.Kernel.VirtualDom.lazyShallowDeep
 

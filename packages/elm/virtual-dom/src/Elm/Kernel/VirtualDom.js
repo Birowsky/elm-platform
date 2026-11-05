@@ -223,10 +223,10 @@ var _VirtualDom_lazy8 = F9(function(func, a, b, c, d, e, f, g, h)
 	});
 });
 
-var _VirtualDom_lazyShallow = F2(function(func, record)
+var _VirtualDom_lazyShallow = F2(function(func, shallow)
 {
-	return _VirtualDom_thunk(_VirtualDom_toShallowRefs(func, record), function() {
-		return func(record);
+	return _VirtualDom_thunk(_VirtualDom_toShallowRefs(func, shallow), function() {
+		return func(shallow);
 	});
 });
 
@@ -234,18 +234,29 @@ var _VirtualDom_lazyShallow = F2(function(func, record)
 // case of their own. The extra value is a plain property because adding a kernel
 // field here would renumber the ones after it, and elm-explorations/test
 // hard-codes those.
-var _VirtualDom_lazyShallowDeep = F3(function(func, record, deep)
+var _VirtualDom_lazyShallowDeep = F3(function(func, shallow, deep)
 {
-	var thunk = _VirtualDom_thunk(_VirtualDom_toShallowRefs(func, record), function() {
-		return A2(func, record, deep);
+	var thunk = _VirtualDom_thunk(_VirtualDom_toShallowRefs(func, shallow), function() {
+		return A2(func, shallow, deep);
 	});
 	thunk.elm_lazy_deep = deep;
 	return thunk;
 });
 
-function _VirtualDom_toShallowRefs(func, record)
+function _VirtualDom_toShallowRefs(func, value)
 {
-	return [func].concat(Object.keys(record).sort().map(function(key) { return record[key]; }));
+	return [func].concat(_VirtualDom_isPlainObject(value)
+		? Object.keys(value).sort().map(function(key) { return value[key]; })
+		: [value]
+	);
+}
+
+// Records and custom types are plain objects. Anything else, from a number to a
+// File inside a Value, has no fields to compare: looking for them finds none, and
+// every change would then look like no change.
+function _VirtualDom_isPlainObject(value)
+{
+	return typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype;
 }
 
 

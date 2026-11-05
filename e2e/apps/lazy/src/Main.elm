@@ -41,6 +41,10 @@ type alias Deep =
     }
 
 
+type Counted
+    = Counted Value Int
+
+
 type Position
     = ShowLazy
     | ShowShallowDeep
@@ -154,34 +158,33 @@ view model =
         , span [ id "clicks" ] [ text (String.fromInt model.clicks) ]
         , span [ id "mapped-clicks" ] [ text (String.fromInt model.mappedClicks) ]
         , VirtualDom.lazyShallow viewShallow
-            { lazyDummy = ()
-            , external = model.external
+            { external = model.external
             , field = model.field
             , items = model.items
             }
+        , VirtualDom.lazyShallow viewInt model.field
+        , VirtualDom.lazyShallow viewBool (model.field > 0)
+        , VirtualDom.lazyShallow viewCounted (Counted model.external model.field)
         , VirtualDom.lazyShallowDeep viewShallowDeep
-            { lazyDummy = ()
-            , external = model.external
+            { external = model.external
             , field = model.field
             }
             model.deep
         , VirtualDom.lazyShallowDeep viewHandler
-            { lazyDummy = ()
-            , external = model.external
+            { external = model.external
             }
             { handler = model.handler }
         , viewPosition model
         , Html.Keyed.ul [ id "keyed" ] (List.map viewKeyedKid model.keys)
         , Html.map Mapped
             (VirtualDom.lazyShallow viewMapped
-                { lazyDummy = ()
-                , external = model.external
+                { external = model.external
                 }
             )
         ]
 
 
-viewShallow : { lazyDummy : (), external : Value, field : Int, items : List Int } -> Html Msg
+viewShallow : { external : Value, field : Int, items : List Int } -> Html Msg
 viewShallow record =
     div [ id "shallow" ]
         [ span [ id "shallow-stamp" ] [ text (toStamp record.external) ]
@@ -190,7 +193,33 @@ viewShallow record =
         ]
 
 
-viewShallowDeep : { lazyDummy : (), external : Value, field : Int } -> Deep -> Html Msg
+viewInt : Int -> Html Msg
+viewInt n =
+    span [ id "int" ] [ text (String.fromInt n) ]
+
+
+viewBool : Bool -> Html Msg
+viewBool isOn =
+    span [ id "bool" ]
+        [ text
+            (if isOn then
+                "on"
+
+             else
+                "off"
+            )
+        ]
+
+
+viewCounted : Counted -> Html Msg
+viewCounted (Counted external n) =
+    div [ id "counted" ]
+        [ span [ id "counted-stamp" ] [ text (toStamp external) ]
+        , span [ id "counted-field" ] [ text (String.fromInt n) ]
+        ]
+
+
+viewShallowDeep : { external : Value, field : Int } -> Deep -> Html Msg
 viewShallowDeep record deep =
     div [ id "shallow-deep" ]
         [ span [ id "shallow-deep-stamp" ] [ text (toStamp record.external) ]
@@ -200,7 +229,7 @@ viewShallowDeep record deep =
         ]
 
 
-viewHandler : { lazyDummy : (), external : Value } -> { handler : Int -> Int } -> Html Msg
+viewHandler : { external : Value } -> { handler : Int -> Int } -> Html Msg
 viewHandler record { handler } =
     div [ id "handler" ]
         [ span [ id "handler-stamp" ] [ text (toStamp record.external) ]
@@ -215,10 +244,10 @@ viewPosition model =
             Html.Lazy.lazy viewPositionLazy model.field
 
         ShowShallowDeep ->
-            VirtualDom.lazyShallowDeep viewPositionShallowDeep { lazyDummy = (), field = model.field } model.deep
+            VirtualDom.lazyShallowDeep viewPositionShallowDeep { field = model.field } model.deep
 
         ShowShallow ->
-            VirtualDom.lazyShallow viewPositionShallow { lazyDummy = (), field = model.field }
+            VirtualDom.lazyShallow viewPositionShallow { field = model.field }
 
         ShowPlain ->
             p [ id "position" ] [ text "plain" ]
@@ -229,12 +258,12 @@ viewPositionLazy field =
     div [ id "position" ] [ text ("lazy " ++ String.fromInt field) ]
 
 
-viewPositionShallowDeep : { lazyDummy : (), field : Int } -> Deep -> Html Msg
+viewPositionShallowDeep : { field : Int } -> Deep -> Html Msg
 viewPositionShallowDeep record deep =
     div [ id "position" ] [ text ("shallow-deep " ++ String.fromInt record.field ++ " " ++ String.fromInt deep.n) ]
 
 
-viewPositionShallow : { lazyDummy : (), field : Int } -> Html Msg
+viewPositionShallow : { field : Int } -> Html Msg
 viewPositionShallow record =
     div [ id "position" ] [ text ("shallow " ++ String.fromInt record.field) ]
 
@@ -249,7 +278,7 @@ viewKid key =
     li [ id ("item-" ++ key) ] [ input [ id ("input-" ++ key) ] [] ]
 
 
-viewMapped : { lazyDummy : (), external : Value } -> Html MappedMsg
+viewMapped : { external : Value } -> Html MappedMsg
 viewMapped record =
     div [ id "mapped" ]
         [ span [ id "mapped-stamp" ] [ text (toStamp record.external) ]

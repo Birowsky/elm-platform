@@ -14,7 +14,7 @@ const binaryPackage = join(repoRoot, `npm/elm-platform-${process.platform}_${pro
 const scratch = mkdtempSync(join(tmpdir(), 'elm-platform-wrapper-'))
 const kernel = 'elm/virtual-dom/src/Elm/Kernel/VirtualDom.js'
 const patchedVirtualDom = JSON.parse(readFileSync(join(repoRoot, 'packages/elm/virtual-dom/elm.json'), 'utf8')).version
-const moduleWithLazy = 'module Main exposing (main)\nimport Html\nimport VirtualDom\nmain = VirtualDom.lazyShallow (\\r -> Html.text r.t) { lazyDummy = (), t = "hi" }\n'
+const moduleWithLazy = 'module Main exposing (main)\nimport Html\nimport VirtualDom\nmain = VirtualDom.lazyShallow (\\r -> Html.text r.t) { t = "hi" }\n'
 
 let warmPackages // a home every test starts from, so that only the first compile goes online
 

@@ -15,19 +15,19 @@ type Msg
 
 shallow : Html Msg
 shallow =
-    VirtualDom.lazyShallow viewShallow { lazyDummy = (), label = "shallow" }
+    VirtualDom.lazyShallow viewShallow { label = "shallow" }
 
 
 shallowDeep : Html Msg
 shallowDeep =
-    VirtualDom.lazyShallowDeep viewShallowDeep { lazyDummy = (), label = "shallow deep" } { deep = "second argument" }
+    VirtualDom.lazyShallowDeep viewShallowDeep { label = "shallow deep" } { deep = "second argument" }
 
 
 keyed : Html Msg
 keyed =
     Html.Keyed.ul [ id "list" ]
         [ ( "a", Html.Lazy.lazy viewKid "a" )
-        , ( "b", VirtualDom.lazyShallow viewShallow { lazyDummy = (), label = "b" } )
+        , ( "b", VirtualDom.lazyShallow viewShallow { label = "b" } )
         ]
 
 
@@ -36,7 +36,7 @@ mapped =
     Html.map Wrapped shallow
 
 
-viewShallow : { lazyDummy : (), label : String } -> Html Msg
+viewShallow : { label : String } -> Html Msg
 viewShallow record =
     div [ class "card" ]
         [ text record.label
@@ -44,7 +44,7 @@ viewShallow record =
         ]
 
 
-viewShallowDeep : { lazyDummy : (), label : String } -> { deep : String } -> Html Msg
+viewShallowDeep : { label : String } -> { deep : String } -> Html Msg
 viewShallowDeep record { deep } =
     div [ class "card" ]
         [ text record.label
