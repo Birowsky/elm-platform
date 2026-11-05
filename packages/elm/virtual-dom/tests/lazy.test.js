@@ -24,6 +24,7 @@ function show(...values) {
 const viewOne = record => show(record);
 const viewOther = record => show('other', record);
 const viewTwo = record => deep => show(record, deep);
+const viewTag = tag => k.node(tag);
 
 
 // TRANSITIONS
@@ -262,4 +263,17 @@ test('lazy: still skips on the same argument and runs on another', () => {
   assert.equal(calls, 0);
   go(same, k.lazy(viewOne, 2));
   assert.equal(calls, 1);
+});
+
+test('lazy: a view that gets a new root element hands that element back', () => {
+  const next = go(start(k.lazy(viewTag, 'div')), k.lazy(viewTag, 'span'));
+  assert.equal(next.dom.tagName, 'SPAN');
+});
+
+test('lazy: a keyed kid that moves and gets a new root element shows the new one', () => {
+  const list = (...kids) => k.keyed('ul', [], kids);
+  go(
+    start(list(['a', k.lazy(viewTag, 'div')], ['b', k.node('i')], ['c', k.node('b')])),
+    list(['b', k.node('i')], ['c', k.node('b')], ['a', k.lazy(viewTag, 'span')])
+  );
 });

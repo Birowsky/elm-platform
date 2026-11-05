@@ -1316,6 +1316,7 @@ function _VirtualDom_addDomNodesHelp(domNode, vNode, patches, i, low, high, even
 
 		if (patchType === __3_THUNK)
 		{
+			patch.__domNode = domNode; // or a redraw below it can't report the node that replaced this one
 			_VirtualDom_addDomNodes(domNode, vNode.__node, patch.__data, eventNode);
 		}
 		else if (patchType === __3_REORDER)
