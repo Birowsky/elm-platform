@@ -15,6 +15,7 @@ This gives you the `elm` command. elm-test, elm-review and webpack loaders find 
 | `elm/virtual-dom` | 1.0.5 | `Html.Keyed` moves as few kids as possible, so the ones that stay keep focus, scroll position and animations |
 | `elm/virtual-dom` | 1.0.5 | Adds `VirtualDom.lazyShallow` and `VirtualDom.lazyFancy` |
 | compiler | 0.19.3 | `elm diff` and `elm bump` report compatible changes apart from breaking ones, and tell same-named types from different modules apart |
+| compiler | 0.19.3 | A project's first compile no longer fails now and then with `elm-stuff/0.19.3/d.dat: resource busy (file is locked)` |
 
 The compiler ships for macOS on arm64 and Linux on x64.
 

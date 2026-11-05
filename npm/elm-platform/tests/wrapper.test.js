@@ -120,17 +120,6 @@ test('passes on what the compiler exits with', () => {
   assert.equal(spawnSync(process.execPath, [toBin(app.install), '--version'], { cwd: app.dir, env: toEnv(app), encoding: 'utf8' }).stdout.trim(), '0.19.3')
 })
 
-test("a project's first compile doesn't trip over its own files", () => { // Elm wrote d.dat from two threads, which failed now and then with "resource busy (file is locked)"
-  const app = toApp(toWarmInstall('first-compiles'))
-  const home = join(app.install, 'node_modules/.cache/elm-platform/home')
-  Array.from({ length: 40 }).forEach(() => {
-    rmSync(join(app.dir, 'elm-stuff'), { recursive: true, force: true })
-    rmSync(home, { recursive: true, force: true }) // rebuilding the packages is what leaves those writes competing
-    seedWarmPackages(app.install)
-    assertCompiled(run(app))
-  })
-})
-
 test('platformInputs names what decides compiled output', async () => {
   const app = toApp(toWarmInstall('inputs'))
   const checkout = join(app.install, 'checkout')

@@ -335,7 +335,7 @@ verifyDependencies writer env@(Env key stuff cache _ _ _) time outline solution 
           in
           do  File.writeBytes_ writer (R.objects    stuff) Opt.eGlobalGraph objs
               File.writeBytes_ writer (R.interfaces stuff) (E.dict32 ModuleName.eCanonical I.eDependencyInterface) ifaces
-              File.writeBytes_ writer (R.details    stuff) eDetails details
+              File.writeBytes writer (R.details    stuff) eDetails details -- not writeBytes_: Build writes this file again after compiling, and two writers of one file fail with "resource busy (file is locked)"
               return (Right details)
 
 
