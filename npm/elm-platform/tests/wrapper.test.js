@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -34,6 +34,7 @@ test('places the patched package in ~/.elm, under its own version, where every E
   assert.match(toOutput(app), /_VirtualDom_lazyShallow/)
   assert.ok(existsSync(join(toCache(app.install), 'elm/virtual-dom', patchedVirtualDom, 'src/VirtualDom.elm')))
   assert.ok(existsSync(join(toCache(app.install), 'elm/virtual-dom', patchedVirtualDom, 'docs.json')))
+  assert.equal(statSync(join(toCache(app.install), 'elm/virtual-dom', patchedVirtualDom)).mode & 0o777, 0o755)
   assert.deepEqual(toLeftovers(app.install), [])
 })
 
