@@ -1,21 +1,49 @@
-// Readies the Elm home: the patched packages in place of the ones Elm would download, and nothing compiled from an older platform.
+// Readies the Elm home, so that the patched packages are where every Elm tool looks for them.
 //
-// Elm trusts any package whose `src` folder is in its home, and it keys the compiled `artifacts.dat` of a package on the versions of
-// its dependencies, not on its source. So placing a package is enough to use it, and nothing but this notices when one changes.
+// A released package never changes under its version, and no stock project asks for that version, so it is placed once, next to whatever else is in the home.
+// A checkout's packages do change under their version, and Elm wouldn't notice: it trusts any `src` folder in its home and keys the compiled `artifacts.dat` of a
+// package on the versions of its dependencies, not on its source. So they get a home of their own, replaced whenever their files change.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { withLock } from './lock.js'
-import { bundledPackages, compilerVersion, elmHome, toStamp } from './platform.js'
+import { bundledPackages, compilerVersion, elmHome, toStamp, usesCallersHome, usesCheckout } from './platform.js'
 import { readStamp, writeStamp } from './stamp.js'
 
 export {
   prepareHome,
 }
 
-const shippedEntries = ['src', 'elm.json', 'LICENSE', 'README.md']
+const shippedEntries = ['src', 'elm.json', 'docs.json', 'LICENSE', 'README.md']
 
 function prepareHome() {
+  if (!usesCheckout()) placeReleasedPackages()
+  else if (!usesCallersHome()) prepareCheckoutHome() // a caller that names its own home may have linked it to `~/.elm`, which a checkout must stay out of
+}
+
+function toCache(home) {
+  return join(home, compilerVersion, 'packages')
+}
+
+function placeReleasedPackages() {
+  bundledPackages().forEach(pkg => placeOnce(toCache(elmHome()), pkg))
+}
+
+function placeOnce(cache, { name, version, dir }) {
+  const target = join(cache, name, version)
+  if (existsSync(join(target, 'elm.json'))) return
+  mkdirSync(dirname(target), { recursive: true })
+  const incoming = mkdtempSync(join(dirname(target), '.incoming-')) // renamed into place when complete, because a compiler may be reading the home right now
+  copyPackage(dir, incoming)
+  try {
+    renameSync(incoming, target)
+  } catch (error) {
+    rmSync(incoming, { recursive: true, force: true })
+    if (!existsSync(target)) throw error // otherwise another process was first
+  }
+}
+
+function prepareCheckoutHome() {
   const home = elmHome()
   const stamp = toStamp()
   if (readStamp(home) === stamp) return
@@ -23,13 +51,9 @@ function prepareHome() {
   withLock(home, () => {
     if (readStamp(home) === stamp) return // another process did it while this one waited
     forgetCompiledPackages(toCache(home))
-    bundledPackages().forEach(pkg => placePackage(toCache(home), pkg))
+    bundledPackages().forEach(pkg => replacePackage(toCache(home), pkg))
     writeStamp(home, stamp)
   })
-}
-
-function toCache(home) {
-  return join(home, compilerVersion, 'packages')
 }
 
 function forgetCompiledPackages(cache) {
@@ -40,8 +64,12 @@ function forgetCompiledPackages(cache) {
   }
 }
 
-function placePackage(cache, { name, version, dir }) {
+function replacePackage(cache, { name, version, dir }) {
   const target = join(cache, name, version)
   rmSync(target, { recursive: true, force: true })
-  shippedEntries.forEach(entry => cpSync(join(dir, entry), join(target, entry), { recursive: true }))
+  copyPackage(dir, target)
+}
+
+function copyPackage(from, to) {
+  shippedEntries.filter(entry => existsSync(join(from, entry))).forEach(entry => cpSync(join(from, entry), join(to, entry), { recursive: true }))
 }

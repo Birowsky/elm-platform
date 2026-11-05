@@ -4,7 +4,7 @@
 import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { browserApps, built, consumer, elmBin, root, scratch, source } from './paths.js'
+import { browserApps, built, consumer, elmBin, homeAfterInstall, root, scratch, source } from './paths.js'
 
 rmSync(scratch, { recursive: true, force: true })
 mkdirSync(consumer, { recursive: true })
@@ -17,8 +17,8 @@ function toTarball(dir) {
 }
 
 function install(tarballs) {
-  writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true }))
-  execFileSync('npm', ['install', ...tarballs, 'elm-test@0.19.3-0', '--no-audit', '--no-fund', '--silent'], { cwd: consumer, stdio: 'inherit' })
+  writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, allowScripts: { '@birowsky/elm-platform': true } }))
+  execFileSync('npm', ['install', ...tarballs, 'elm-test@0.19.3-0', '--no-audit', '--no-fund', '--silent'], { cwd: consumer, stdio: 'inherit', env: { ...process.env, ELM_HOME: homeAfterInstall } })
   cpSync(source('query'), join(consumer, 'query'), { recursive: true })
 }
 

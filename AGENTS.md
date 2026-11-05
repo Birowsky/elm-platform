@@ -18,19 +18,22 @@ The Elm compiler and patched core libraries, released to apps as one npm package
 | Build the compiler into its binary package, which the tests below use | `npm run build:compiler` |
 | Kernel and wrapper tests | `npm test` |
 | E2E | `npm run e2e` (first: `npx playwright install chromium webkit`) |
-| Set a release's version on every package | `node scripts/set-version.js 0.19.3-N` |
+| Set a release's version on every package, and on each patched package that changed | `node scripts/set-version.js 0.19.3-N` |
+| Write the `docs.json` of each patched package | `node scripts/build-docs.js` |
 | Build and test every platform without publishing | `gh workflow run release.yaml` |
 | Compiler tests | `cd compiler && cabal test` |
 | Try a checkout in an app, unreleased | `ELM_PLATFORM_DEV=<this repo> npm run serve:web -w frontend`, from the app |
 
 ## Rules the code can't show
 
-- **A patched package keeps the version it patches.** Elm's version parser takes exactly three numbers and its solver only accepts published versions, so `1.0.5-x` and `1.0.6` don't build. Apps have to pin that version, and the wrapper stops the build if they don't.
+- **A patched package has a version of its own: `<major>.900.N`.** `1.900.0` is what no stock project can ask for, since the Elm website will never list it, and it stays inside the `< 2.0.0` that the packages depending on it allow. Our compiler counts the versions in the Elm home as known (`withLocalVersions` in `Deps/Registry.hs`), which stock Elm doesn't, so a project pinning one fails on stock Elm with `INCOMPATIBLE DEPENDENCIES`. Apps have to pin the version a release ships, and the wrapper stops the build if they don't.
+- **Never change what a released version holds.** The wrapper places a version in the Elm home once and doesn't look at it again, which is what lets `~/.elm` be shared. `scripts/set-version.js` gives a changed package the next `N`, and `scripts/publish.js` refuses a changed package under an old version.
+- **The package has to be in the Elm home before any tool asks for it.** elm-test and the editor plugins look there without running `elm`, and elm-test fails with `no version of elm/virtual-dom in 1.900.0` otherwise. So the package is placed at install (`lib/postinstall.js`, which an app allows through `allowScripts`) as well as by `elm` itself. elm-review reads `docs.json` from the same folder and otherwise asks the Elm website, so it ships with the package, and a test fails when it doesn't match the source.
 - **Never let a kernel field change its letter.** The compiler numbers kernel fields (the `__name` tokens, comments included) by first appearance in the file, and `elm-explorations/test` hard-codes the resulting letters for virtual-dom. So don't introduce a `__field` early in `VirtualDom.js`, and use a plain property like `elm_lazy_deep` for anything new on a node. `tests/field-letters.test.js` and `e2e/apps/query` catch this.
 - **No new node types.** Render, patching and `elm-explorations/test` all switch on the node type. Build on the existing ones.
 - **Keep patches as separate commits on top of upstream**, one change each, with their tests. Git history is the list of how we differ, and each commit can go upstream as a PR.
-- **Elm notices nothing about a changed package.** `artifacts.dat` is keyed on dependency versions and `elm-stuff` on the mtime of `elm.json`, so the wrapper drops both when its stamp changes (`lib/home.js`, `lib/project.js`). A released package is immutable, so its stamp is its version; with `ELM_PLATFORM_DEV` it is a hash of the files.
-- **A caller's `ELM_HOME` is left alone.** The wrapper places patches only in its own home, because a caller's home may hold symlinks into `~/.elm`.
+- **Elm notices nothing about a changed package.** `artifacts.dat` is keyed on dependency versions and `elm-stuff` on the mtime of `elm.json`. The wrapper drops a project's `elm-stuff` when its stamp changes (`lib/project.js`): the release, or with `ELM_PLATFORM_DEV` a hash of the files. A checkout's packages change under one version, so they get a home of their own, with the same treatment (`lib/home.js`), and never touch `~/.elm`.
+- **`~/.elm` is shared with stock Elm, so its compiled files have to stay interchangeable.** Today they are: a stock compile in a home our compiler wrote to gives the same bytes as in a home only stock has seen. A compiler change that alters generated code or the format of `artifacts.dat` has to rename that file in the same commit (`Elm/Details.hs`), so that the two compilers stop reading each other's, and packages compiled before the change get rebuilt. The byte comparison under Releasing is how you find out.
 
 ## Tests
 
@@ -40,15 +43,15 @@ A change to a kernel gets a test beside it, on the real kernel in jsdom, and whe
 
 Pull: `git subtree pull --prefix=compiler https://github.com/elm/compiler.git main`, or the same for a package. Send a patch upstream: `git format-patch -1 <commit> --relative=compiler`, then apply it in a clone of the upstream repo.
 
-To patch another package, add it as a subtree at the version apps use, `git subtree add --prefix=packages/elm/<name> https://github.com/elm/<name>.git <tag>`, and list it in `npm/elm-platform/README.md`.
+To patch another package, add it as a subtree at the version apps use, `git subtree add --prefix=packages/elm/<name> https://github.com/elm/<name>.git <tag>`, set its version to `<major>.900.0`, run `node scripts/build-docs.js`, and list it in `npm/elm-platform/README.md`.
 
 ## Releasing
 
-1. `node scripts/set-version.js 0.19.3-N`: the Elm version plus a counter, the same on every package.
+1. `node scripts/set-version.js 0.19.3-N`: the Elm version plus a counter, the same on every npm package. It also moves each patched package that changed since the last release to its next version, and says which.
 2. Update the table in `npm/elm-platform/README.md`.
 3. Commit, tag `v0.19.3-N`, push both. `.github/workflows/release.yaml` builds what changed, runs the tests on every platform and publishes, through npm's trusted publishing. There is no token, no npm login and no one to ask, so an agent releases this way too. Re-running a failed publish job skips what is already on npm.
 4. Wait for the version: npm can take about 15 minutes after the job ends, and `npm view` answers 404 until then.
-5. In each app, set the exact version. Its own CI is the last check, and reverting that line is the rollback.
+5. In each app, set the exact version, and in its `elm.json` any patched version that moved. Its own CI is the last check, and reverting those lines is the rollback.
 
 A package new to npm, such as one for a new platform, can't be published by the workflow until the owner of the npm account has run `node scripts/trust-packages.js` for it, with their 2FA. Tag within 2 days of that, because npm expires a trust setting that goes unused.
 

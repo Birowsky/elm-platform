@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -14,6 +15,7 @@ export {
   toBinary,
   toStamp,
   usesCallersHome,
+  usesCheckout,
   version,
 }
 
@@ -27,9 +29,13 @@ function usesCallersHome() {
   return process.env.ELM_HOME !== undefined
 }
 
-/** Patched packages keep the version they patch, so they can't share `~/.elm` with projects that expect the stock code. */
+function usesCheckout() {
+  return devRoot !== undefined
+}
+
+/** Where every Elm tool looks, since a patched package has a version of its own that no stock project asks for. A checkout's packages are unreleased, so they stay out of it. */
 function elmHome() {
-  return process.env.ELM_HOME ?? join(toNodeModules(), '.cache/elm-platform/home')
+  return process.env.ELM_HOME ?? (devRoot ? join(toNodeModules(), '.cache/elm-platform/checkout-home') : join(homedir(), '.elm'))
 
   function toNodeModules() {
     const parts = packageDir.split(sep)

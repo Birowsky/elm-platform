@@ -22,7 +22,7 @@ function prepareProject(root) {
   refreshCompiledOutput(root)
 }
 
-/** Without this, a project on another version of a patched package gets the stock code, with no error anywhere. */
+/** Without this, a project on the stock version gets the stock code with no error anywhere, and one on another patched version gets Elm's puzzling "INCOMPATIBLE DEPENDENCIES". */
 function assertPinsMatch(root) {
   const mismatches = isGenerated(root) ? [] : toMismatches(toPins(root))
   if (mismatches.length === 0) return
@@ -43,7 +43,7 @@ function assertPinsMatch(root) {
     return [
       `-- WRONG PACKAGE VERSION ${'-'.repeat(47)} elm.json`,
       '',
-      `@birowsky/elm-platform ${version} patches these packages, but your elm.json pins other versions, which would run without the patches:`,
+      `@birowsky/elm-platform ${version} ships its own versions of these packages, but your elm.json pins others:`,
       '',
       ...mismatches.map(({ name, patched, pinned }) => `    ${name}: pinned ${pinned}, patched ${patched}`),
       '',

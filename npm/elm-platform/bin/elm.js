@@ -3,10 +3,10 @@
 
 import { spawn } from 'node:child_process'
 import { prepareHome } from '../lib/home.js'
-import { elmHome, toBinary, usesCallersHome } from '../lib/platform.js'
+import { elmHome, toBinary } from '../lib/platform.js'
 import { findProject, prepareProject } from '../lib/project.js'
 
-if (!usesCallersHome()) prepareHome() // a caller that names its own ELM_HOME owns what is in it
+prepareHome()
 const project = findProject(process.cwd())
 if (project) prepareProject(project)
 const elm = spawn(toBinary(), process.argv.slice(2), { stdio: 'inherit', env: { ...process.env, ELM_HOME: elmHome() } })

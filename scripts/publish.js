@@ -2,15 +2,15 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { root, toUnversionedChanges } from './released-packages.js'
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const main = join(root, 'npm/elm-platform')
 const binaryPackages = ['darwin_arm64', 'linux_x64'].map(platform => join(root, `npm/elm-platform-${platform}`))
 const { version } = readManifest(main)
 
 assertTagMatchesVersion()
+assertChangedPackagesHaveNewVersions()
 binaryPackages.forEach(assertReady)
 binaryPackages.forEach(dir => chmodSync(join(dir, 'elm'), 0o755)) // artifact downloads lose the executable bit
 ;[...binaryPackages, main].forEach(publish)
@@ -22,6 +22,11 @@ function readManifest(dir) {
 function assertTagMatchesVersion() {
   const tag = process.env.GITHUB_REF_NAME
   if (tag !== undefined && tag !== `v${version}`) throw new Error(`The tag ${tag} doesn't match the version ${version}.`)
+}
+
+function assertChangedPackagesHaveNewVersions() {
+  const unversioned = toUnversionedChanges(version)
+  if (unversioned.length > 0) throw new Error(`${unversioned.map(({ name }) => name).join(', ')} changed since the last release but kept its version, so nobody would get the change. Run scripts/set-version.js.`)
 }
 
 function assertReady(dir) {
