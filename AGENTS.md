@@ -47,6 +47,8 @@ To patch another package, add it as a subtree at the version apps use, `git subt
 
 ## Releasing
 
+**A change pushed to master isn't done until apps run it.** Whenever a feature or fix is pushed, release it to npm (the steps below) and take the release into `/Users/birowsky/Projects/Commercial/brancha/brancha-monorepo` (the `Elm` section of its `AGENTS.md` says how: `npm install @birowsky/elm-platform@<version> --save-exact -w frontend -w ts-schema`, plus any moved patched version in `frontend/elm.json`). Pushing the code without that leaves the app on a compiler that lacks it.
+
 1. `node scripts/set-version.js 0.19.3-N`: the Elm version plus a counter, the same on every npm package. It also moves each patched package that changed since the last release to its next version, and says which.
 2. Update the table in `npm/elm-platform/README.md`.
 3. Commit, tag `v0.19.3-N`, push both. `.github/workflows/release.yaml` builds what changed, runs the tests on every platform and publishes, through npm's trusted publishing. There is no token, no npm login and no one to ask, so an agent releases this way too. Re-running a failed publish job skips what is already on npm.
