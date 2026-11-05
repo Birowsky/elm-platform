@@ -4,7 +4,7 @@ import Basics exposing (identity)
 import Elm.Kernel.Debug exposing (crash)
 import Elm.Kernel.Json exposing (equality, runHelp, unwrap, wrap)
 import Elm.Kernel.List exposing (Cons, Nil)
-import Elm.Kernel.Utils exposing (Tuple2)
+import Elm.Kernel.Utils exposing (Tuple2, eq)
 import Elm.Kernel.Platform exposing (export)
 import Json.Decode as Json exposing (map, map2, succeed)
 import Result exposing (isOk)
@@ -222,6 +222,31 @@ var _VirtualDom_lazy8 = F9(function(func, a, b, c, d, e, f, g, h)
 		return A8(func, a, b, c, d, e, f, g, h);
 	});
 });
+
+var _VirtualDom_lazyShallow = F2(function(func, record)
+{
+	return _VirtualDom_thunk(_VirtualDom_toShallowRefs(func, record), function() {
+		return func(record);
+	});
+});
+
+// Still a thunk, so that rendering, patching and elm-explorations/test need no
+// case of their own. The extra value is a plain property because adding a kernel
+// field here would renumber the ones after it, and elm-explorations/test
+// hard-codes those.
+var _VirtualDom_lazyFancy = F3(function(func, record, deep)
+{
+	var thunk = _VirtualDom_thunk(_VirtualDom_toShallowRefs(func, record), function() {
+		return A2(func, record, deep);
+	});
+	thunk.elm_lazy_deep = deep;
+	return thunk;
+});
+
+function _VirtualDom_toShallowRefs(func, record)
+{
+	return [func].concat(Object.keys(record).sort().map(function(key) { return record[key]; }));
+}
 
 
 
@@ -758,7 +783,7 @@ function _VirtualDom_diffHelp(x, y, patches, index)
 			{
 				same = xRefs[i] === yRefs[i];
 			}
-			if (same)
+			if (same && __Utils_eq(x.elm_lazy_deep, y.elm_lazy_deep))
 			{
 				y.__node = x.__node;
 				return;

@@ -6,6 +6,7 @@ module VirtualDom exposing
   , map, mapAttribute
   , keyedNode, keyedNodeNS
   , lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
+  , lazyShallow, lazyFancy
   )
 
 {-| API to the core diffing algorithm. Can serve as a foundation for libraries
@@ -28,6 +29,7 @@ that expose more helper functions for HTML or SVG.
 
 # Lazy Nodes
 @docs lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
+@docs lazyShallow, lazyFancy
 
 -}
 
@@ -340,6 +342,35 @@ lazy7 =
 lazy8 : (a -> b -> c -> d -> e -> f -> g -> h -> Node msg) -> a -> b -> c -> d -> e -> f -> g -> h -> Node msg
 lazy8 =
   Elm.Kernel.VirtualDom.lazy8
+
+
+{-| Same as `lazy`, for when eight arguments are not enough. Every field of the
+record is checked by reference, as if it were an argument of its own, so you can
+build the record anew on every call.
+
+    lazyShallow viewCard
+        { lazyDummy = ()
+        , card = model.card
+        , zone = model.zone
+        }
+
+The `lazyDummy` field is what makes the type accept records and nothing else.
+-}
+lazyShallow : ({ a | lazyDummy : () } -> Node msg) -> { a | lazyDummy : () } -> Node msg
+lazyShallow =
+  Elm.Kernel.VirtualDom.lazyShallow
+
+
+{-| Same as `lazyShallow`, plus a second argument that is checked with `(==)`
+instead of by reference. Use it for a value that gets rebuilt on every call but
+rarely changes.
+
+`(==)` crashes when it reaches two different functions, so keep functions out of
+the second argument.
+-}
+lazyFancy : ({ a | lazyDummy : () } -> b -> Node msg) -> { a | lazyDummy : () } -> b -> Node msg
+lazyFancy =
+  Elm.Kernel.VirtualDom.lazyFancy
 
 
 

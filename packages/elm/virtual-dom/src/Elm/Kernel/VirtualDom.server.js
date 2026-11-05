@@ -139,6 +139,16 @@ var _VirtualDom_lazy8 = F9(function(fn, a, b, c, d, e, f, g, h)
 	return A8(fn, a, b, c, d, e, f, g, h);
 });
 
+var _VirtualDom_lazyShallow = F2(function(fn, record)
+{
+	return fn(record);
+});
+
+var _VirtualDom_lazyFancy = F3(function(fn, record, deep)
+{
+	return A2(fn, record, deep);
+});
+
 
 // FACTS
 

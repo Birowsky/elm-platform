@@ -12,8 +12,8 @@ const KERNEL = path.join(__dirname, '..', 'src', 'Elm', 'Kernel', 'VirtualDom.js
 
 const EXPORTS = [
   '_VirtualDom_node', '_VirtualDom_keyedNode', '_VirtualDom_text', '_VirtualDom_attribute',
-  '_VirtualDom_map', '_VirtualDom_lazy', '_VirtualDom_render', '_VirtualDom_diff',
-  '_VirtualDom_applyPatches',
+  '_VirtualDom_map', '_VirtualDom_lazy', '_VirtualDom_lazyShallow', '_VirtualDom_lazyFancy',
+  '_VirtualDom_render', '_VirtualDom_diff', '_VirtualDom_applyPatches',
 ];
 
 function load() {
@@ -43,6 +43,12 @@ function load() {
     function __List_Cons(a, b) { return { $: 1, a: a, b: b }; }
     function __Utils_Tuple2(a, b) { return { $: '#2', a: a, b: b }; }
     function __Debug_crash(n) { throw new Error('Debug.crash ' + n); }
+    function __Utils_eq(x, y) { // the parts of elm/core's _Utils_eqHelp that decide lazyFancy
+      if (x === y) return true;
+      if (typeof x !== 'object' || x === null || y === null) { typeof x === 'function' && __Debug_crash(5); return false; }
+      for (var key in x) { if (!__Utils_eq(x[key], y[key])) return false; }
+      return true;
+    }
     function __Json_unwrap(x) { return x; } function __Json_wrap(x) { return x; }
     var __Json_equality, __Json_map, __Json_map2, __Json_runHelp, __Json_succeed, __Platform_export,
         __Result_isOk, __VirtualDom_toHandlerInt, __Basics_identity = function (x) { return x; };
@@ -64,6 +70,8 @@ function load() {
     attr: (key, value) => k._VirtualDom_attribute.f(key, value),
     map: (tagger, node) => k._VirtualDom_map.f(tagger, node),
     lazy: (fn, arg) => k._VirtualDom_lazy.f(fn, arg),
+    lazyShallow: (fn, record) => k._VirtualDom_lazyShallow.f(fn, record),
+    lazyFancy: (fn, record, deep) => k._VirtualDom_lazyFancy.f(fn, record, deep),
     render: vnode => k._VirtualDom_render(vnode, function () {}),
     diff: k._VirtualDom_diff,
     applyPatches: (dom, old, patches) => k._VirtualDom_applyPatches(dom, old, patches, function () {}),
