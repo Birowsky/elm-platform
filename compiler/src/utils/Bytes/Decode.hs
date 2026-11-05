@@ -785,14 +785,20 @@ readLoop handle start len (Decoder cont) =
             do  let !leftover = minusAddr# end pos
                 copy pos start leftover
                 (I# new) <- IO.hGetBuf handle (Ptr (plusAddr# start leftover)) (I# (len -# leftover))
-                let !got = leftover +# new
-                loop got =<< k start (plusAddr# start got)
+                resume k leftover new
           else
-            do  (I# got) <- IO.hGetBuf handle (Ptr start) (I# len)
-                loop got =<< k start (plusAddr# start got)
+            do  (I# new) <- IO.hGetBuf handle (Ptr start) (I# len)
+                resume k 0# new
 
         Expecting msg ->
           return $ Left msg
+
+    resume k leftover new =
+      case new of
+        0# -> return $ Left "more bytes" -- the file ended early: a decoder only stalls when it needs more than it has, so asking it again would spin forever
+        _  ->
+          do  let !got = leftover +# new
+              loop got =<< k start (plusAddr# start got)
 
 
 copy :: Addr# -> Addr# -> Int# -> IO ()

@@ -120,6 +120,18 @@ test('passes on what the compiler exits with', () => {
   assert.equal(spawnSync(process.execPath, [toBin(app.install), '--version'], { cwd: app.dir, env: toEnv(app), encoding: 'utf8' }).stdout.trim(), '0.19.3')
 })
 
+test('an empty d.dat costs a rebuild, not a hang', () => { // a compile stopped halfway leaves these files empty, and Elm kept reading past their end forever
+  assertCompiled(runWithEmptyCacheFile('d.dat'))
+})
+
+;['i.dat', 'o.dat'].forEach(file => {
+  test(`an empty ${file} is reported, not a hang`, () => {
+    const result = runWithEmptyCacheFile(file)
+    assert.equal(result.status, 1, result.stdout + result.stderr)
+    assert.match(result.stderr, /CORRUPT CACHE/)
+  })
+})
+
 test('platformInputs names what decides compiled output', async () => {
   const app = toApp(toWarmInstall('inputs'))
   const checkout = join(app.install, 'checkout')
@@ -196,6 +208,13 @@ function toEnv(app, extra = {}) {
 
 function run(app, extraEnv) {
   return spawnSync(process.execPath, [toBin(app.install), 'make', 'src/Main.elm', '--output=main.js'], { cwd: app.dir, env: toEnv(app, extraEnv), encoding: 'utf8' })
+}
+
+function runWithEmptyCacheFile(file) {
+  const app = toApp(toWarmInstall(`empty-${file}`))
+  assertCompiled(run(app))
+  writeFileSync(join(app.dir, 'elm-stuff/0.19.3', file), '')
+  return spawnSync(process.execPath, [toBin(app.install), 'make', 'src/Main.elm', '--output=main.js'], { cwd: app.dir, env: toEnv(app), encoding: 'utf8', timeout: 30_000 }) // a hang comes back as status null
 }
 
 function runAsync(app) {
