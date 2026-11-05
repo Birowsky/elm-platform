@@ -14,6 +14,9 @@ This gives you the `elm` command. elm-test, elm-review and webpack loaders find 
 |---|---|---|
 | `elm/virtual-dom` | 1.0.5 | `Html.Keyed` moves as few kids as possible, so the ones that stay keep focus, scroll position and animations |
 | `elm/virtual-dom` | 1.0.5 | Adds `VirtualDom.lazyShallow` and `VirtualDom.lazyFancy` |
+| compiler | 0.19.3 | `elm diff` and `elm bump` report compatible changes apart from breaking ones, and tell same-named types from different modules apart |
+
+The compiler ships for macOS on arm64 and Linux on x64.
 
 Your `elm.json` has to pin the versions in this table. `elm` stops with an error if it pins another one, because that project would run the stock code without saying so. Patched packages keep the version number they patch, because Elm only accepts versions that are published.
 

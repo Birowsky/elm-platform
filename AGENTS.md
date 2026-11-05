@@ -6,7 +6,8 @@ The Elm compiler and patched core libraries, released to apps as one npm package
 
 - `compiler/`: elm/compiler as a git subtree, Haskell, GHC 9.10.3 and cabal 3.16.1.0.
 - `packages/<author>/<name>/`: each patched Elm package as a git subtree, with its tests in `tests/`.
-- `npm/elm-platform/`: the npm package. `bin/elm.js` is what apps run as `elm`.
+- `npm/elm-platform/`: the main npm package. `bin/elm.js` is what apps run as `elm`. Not a workspace, because its optional dependencies are the binary packages of a release that isn't published yet.
+- `npm/elm-platform-<platform>/`: one package per platform, holding the compiler binary, which git ignores.
 - `e2e/`: stands in for an app: packs and installs the package, compiles `apps/*` with it, runs them in Chromium and WebKit.
 
 ## Commands
@@ -14,9 +15,11 @@ The Elm compiler and patched core libraries, released to apps as one npm package
 | What | Command |
 |---|---|
 | Install | `npm ci` |
+| Build the compiler into its binary package, which the tests below use | `npm run build:compiler` |
 | Kernel and wrapper tests | `npm test` |
 | E2E | `npm run e2e` (first: `npx playwright install chromium webkit`) |
-| Build the compiler locally | `npm run build:compiler` |
+| Set a release's version on every package | `node scripts/set-version.js 0.19.3-N` |
+| Build and test every platform without publishing | `gh workflow run release.yaml` |
 | Compiler tests | `cd compiler && cabal test` |
 | Try a checkout in an app, unreleased | `ELM_PLATFORM_DEV=<this repo> npm run serve:web -w frontend`, from the app |
 
@@ -41,10 +44,12 @@ To patch another package, add it as a subtree at the version apps use, `git subt
 
 ## Releasing
 
-1. Bump `version` in `npm/elm-platform/package.json`: `0.19.3-N`, the Elm version plus a counter. If the compiler changed, the binary packages take the same version.
+1. `node scripts/set-version.js 0.19.3-N`: the Elm version plus a counter, the same on every package.
 2. Update the table in `npm/elm-platform/README.md`.
-3. Commit, tag `vX`, push. `.github/workflows/release.yaml` builds what changed, runs the tests against it and publishes.
+3. Commit, tag `v0.19.3-N`, push. `.github/workflows/release.yaml` builds what changed, runs the tests on every platform and publishes. It needs the `NPM_TOKEN` secret. Without it, download the workflow's binaries into their packages and run `node scripts/publish.js` yourself.
 4. In each app, set the exact version. Its own CI is the last check, and reverting that line is the rollback.
+
+Before publishing a compiler change that shouldn't affect generated code, compile a real app with it and with the previous binary, from clean caches, and compare the bytes.
 
 ## Code style
 
