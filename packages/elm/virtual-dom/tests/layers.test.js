@@ -337,6 +337,63 @@ test('an attribute the stack does not have leaves the layer alone', t => {
 });
 
 
+// ORDER
+
+const order = value => k.attr('transition-order', String(value));
+const ranked = value => layer([], [history('forward'), order(value)]);
+const historyOf = element => element.getAttribute('history');
+
+test('a layer of a higher order comes in forward, and pushes the one it replaces out the same way', t => {
+  useClock(t);
+  const app = start(stack([['10', ranked(10)]], [history('back')]));
+  const [ten] = kidsOf(app);
+  go(app, stack([['20', ranked(20)]], [history('back')]));
+  const twenty = kidsOf(app).find(kid => !isExiting(kid));
+  assert.equal(historyOf(twenty), 'forward');
+  assert.equal(historyOf(ten), 'forward');
+});
+
+test('a layer of a lower order comes in back, and pushes the one it replaces out the same way', t => {
+  useClock(t);
+  const app = start(stack([['20', ranked(20)]]));
+  const [twenty] = kidsOf(app);
+  go(app, stack([['10', ranked(10)]]));
+  const ten = kidsOf(app).find(kid => !isExiting(kid));
+  assert.equal(historyOf(ten), 'back');
+  assert.equal(historyOf(twenty), 'back');
+});
+
+test('the layer that left last is what an order is compared to', t => {
+  const tick = useClock(t);
+  const app = start(stack([['10', ranked(10)]]));
+  go(app, stack([['30', ranked(30)]]));
+  tick(100);
+  go(app, stack([['20', ranked(20)]]));
+  const live = kidsOf(app).filter(kid => !isExiting(kid));
+  assert.equal(historyOf(live[0]), 'back');
+});
+
+test('equal orders, and layers with no order, keep the history they were given', t => {
+  useClock(t);
+  const app = start(stack([['a', ranked(5)], ['plain', layer([], [history('forward')])]], [history('back')]));
+  go(app, stack([['b', layer([], [history('back'), order(5)])]], [history('back')]));
+  const [b] = kidsOf(app).filter(kid => !isExiting(kid));
+  assert.equal(historyOf(b), 'back');
+  go(app, stack([['c', layer([], [history('back')])]], [history('back')]));
+  const [c] = kidsOf(app).filter(kid => !isExiting(kid));
+  assert.equal(historyOf(c), 'back');
+});
+
+test('a layer that comes back while it is still leaving is directed by the order too', t => {
+  useClock(t);
+  const app = start(stack([['10', ranked(10)]]));
+  go(app, stack([['20', ranked(20)]]));
+  go(app, stack([['10', ranked(10)]])); // 10 returns in the other direction, from where 20 left
+  const ten = kidsOf(app).find(kid => !isExiting(kid) && kid.getAttribute('transition-order') === '10');
+  assert.equal(historyOf(ten), 'back');
+});
+
+
 // SCROLL
 
 const SCROLLS = k.attr('scrolling-context-selector', '.scroller');

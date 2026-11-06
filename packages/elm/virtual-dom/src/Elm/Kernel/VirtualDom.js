@@ -1632,6 +1632,9 @@ function _VirtualDom_transitions(layer)
 }
 
 
+var _VirtualDom_exits = 0;
+
+
 function _VirtualDom_exitLayer(layer, data)
 {
 	var host = layer.parentNode;
@@ -1662,6 +1665,7 @@ function _VirtualDom_exitLayer(layer, data)
 				layer.parentNode && layer.parentNode.removeChild(layer);
 			}, duration)
 		};
+		layer.elm_exit_seq = ++_VirtualDom_exits; // a plain property, so no kernel field changes its letter
 	}
 	else
 	{
@@ -1710,13 +1714,18 @@ function _VirtualDom_applyLayerInserts(host, inserts, eventNode)
 
 		if (layer === exiting && _VirtualDom_toNextLiveLayer(layer) === before)
 		{
-			transitions && layer.setAttribute('transition-state', 'entering'); // the running transition turns around
+			if (transitions)
+			{
+				_VirtualDom_directByOrder(host, layer);
+				layer.setAttribute('transition-state', 'entering'); // the running transition turns around
+			}
 			continue;
 		}
 
 		// new to the document, so it has no style to transition from
 		if (transitions)
 		{
+			_VirtualDom_directByOrder(host, layer);
 			layer.setAttribute('transition-state', 'init');
 			entering.push(layer);
 		}
@@ -1735,6 +1744,51 @@ function _VirtualDom_applyLayerInserts(host, inserts, eventNode)
 			entering[i].setAttribute('transition-state', 'entering');
 		}
 	}
+}
+
+
+// A layer with a number in `transition-order` comes in from the side that number is on,
+// compared to the layer that left last: a higher one comes from the forward side, and
+// pushes the other out the way it came, a lower one the other way round. That is
+// `history` on both, which the stack's own value could not say, as the view never knows
+// what was shown before. It is only on the DOM, so no diff ever sees it. Equal orders,
+// and a layer or an exit with no order, leave `history` as it is.
+function _VirtualDom_directByOrder(host, layer)
+{
+	var order = _VirtualDom_toOrder(layer);
+	var left = order === null ? null : _VirtualDom_toLastExit(host);
+	var leftOrder = left === null ? null : _VirtualDom_toOrder(left);
+
+	if (leftOrder === null || leftOrder === order)
+	{
+		return;
+	}
+
+	var history = order > leftOrder ? 'forward' : 'back';
+	layer.setAttribute('history', history);
+	left.setAttribute('history', history);
+}
+
+
+function _VirtualDom_toOrder(layer)
+{
+	var order = layer.nodeType === 1 ? parseFloat(layer.getAttribute('transition-order')) : NaN;
+	return isNaN(order) ? null : order;
+}
+
+
+// the exiting layer with an order that started leaving last
+function _VirtualDom_toLastExit(host)
+{
+	var last = null;
+	for (var kid = host.firstChild; kid; kid = kid.nextSibling)
+	{
+		if (kid.elm_exit && _VirtualDom_toOrder(kid) !== null && (last === null || kid.elm_exit_seq > last.elm_exit_seq))
+		{
+			last = kid;
+		}
+	}
+	return last;
 }
 
 

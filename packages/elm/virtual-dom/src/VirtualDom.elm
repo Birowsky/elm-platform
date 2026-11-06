@@ -438,6 +438,13 @@ strings names the attributes it copies from this node when it leaves, to let it
 transition according to what the rest of the page is doing, like which way the user
 is navigating. Coming back gives it its own values again.
 
+A kid can also have a number in the attribute `transition-order`. When it is added
+while a kid with an order is leaving, it takes `history` `"forward"` if its number is
+higher than that kid's, and `"back"` if it is lower, and so does the kid that leaves,
+so a value that goes up slides in from one side and one that goes down from the other.
+This is on the elements only, as the view never knows what was there before. With equal
+orders, or an order on only one of them, `history` stays as the view gave it.
+
 If a kid has the attribute `scrolling-context-selector`, its scroll position is
 remembered when it leaves, on itself or on the first element in it that the selector
 finds. A new element with the same key gets that position back.
