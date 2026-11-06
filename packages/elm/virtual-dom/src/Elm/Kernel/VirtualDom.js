@@ -1629,15 +1629,17 @@ function _VirtualDom_staggerEntrance(host, fresh)
 {
 	var config = window.getComputedStyle(host);
 	var span = _VirtualDom_toMilliseconds(config.getPropertyValue('--stagger-span'));
+	var step = _VirtualDom_toMilliseconds(config.getPropertyValue('--stagger-step'));
 	var easing = _VirtualDom_toEasing(config.getPropertyValue('--stagger-easing'));
 	var overscan = parseInt(config.getPropertyValue('--stagger-overscan'), 10) || 0;
 
 	var run = _VirtualDom_toStaggeredRun(host, fresh.filter(_VirtualDom_isElement), overscan);
+	var total = step > 0 ? Math.min(span, (run.length - 1) * step) : span; // a few kids have no use for the whole span
 
 	for (var i = 0; i < run.length; i++)
 	{
 		var progress = run.length > 1 ? i / (run.length - 1) : 0;
-		run[i].style.setProperty('--stagger-delay', Math.round(span * easing(progress) * 10) / 10 + 'ms'); // to a tenth of a millisecond, as the halving is not exact
+		run[i].style.setProperty('--stagger-delay', Math.round(total * easing(progress) * 10) / 10 + 'ms'); // to a tenth of a millisecond, as the halving is not exact
 		run[i].setAttribute('stagger-state', 'init');
 	}
 

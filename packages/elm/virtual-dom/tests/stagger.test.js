@@ -222,6 +222,34 @@ test('a span in seconds works', t => {
   assert.deepEqual(delaysOf(app), ['0ms', '500ms']);
 });
 
+test('a few kids spread over their steps, not the whole span', t => {
+  useLayout(t, { css: { '--stagger-step': '70ms' } });
+  const app = start(list([]));
+  go(app, list([0, 10, 20]));
+  assert.deepEqual(delaysOf(app), ['0ms', '70ms', '140ms']);
+});
+
+test('a lone kid has no delay even with a step', t => {
+  useLayout(t, { css: { '--stagger-step': '70ms' } });
+  const app = start(list([]));
+  go(app, list([0]));
+  assert.deepEqual(delaysOf(app), ['0ms']);
+});
+
+test('five kids with a 70ms step spread over four gaps', t => {
+  useLayout(t, { css: { '--stagger-step': '70ms' } });
+  const app = start(list([]));
+  go(app, list([0, 10, 20, 30, 40]));
+  assert.deepEqual(delaysOf(app), ['0ms', '70ms', '140ms', '210ms', '280ms']);
+});
+
+test('with a step of 200ms the span still caps the spread', t => {
+  useLayout(t, { css: { '--stagger-step': '200ms' } });
+  const app = start(list([]));
+  go(app, list([0, 10, 20, 30, 40]));
+  assert.deepEqual(delaysOf(app), ['0ms', '150ms', '300ms', '450ms', '600ms']);
+});
+
 test('an easing nobody understands is linear', t => {
   useLayout(t, { css: { '--stagger-easing': 'steps(4)' } });
   const app = start(list([]));
