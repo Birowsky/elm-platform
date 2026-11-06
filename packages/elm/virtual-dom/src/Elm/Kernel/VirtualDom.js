@@ -1559,8 +1559,11 @@ function _VirtualDom_applyPatchReorder(domNode, patch)
 		return domNode;
 	}
 
-	// inserts and moves, in order of their new position
+	// a node that asked to stagger what enters, which only brand new kids do
 	var inserts = data.__inserts;
+	var fresh = (inserts.length > 0 || frag) && domNode.hasAttribute('ef-stagger') ? [] : undefined;
+
+	// inserts and moves, in order of their new position
 	for (var i = 0; i < inserts.length; i++)
 	{
 		var insert = inserts[i];
@@ -1569,13 +1572,20 @@ function _VirtualDom_applyPatchReorder(domNode, patch)
 			? entry.__data
 			: _VirtualDom_render(entry.__vnode, patch.__eventNode);
 		domNode.insertBefore(node, domNode.childNodes[insert.__index]);
+		fresh && entry.__tag !== __5_MOVE && fresh.push(node);
 	}
 
 	// add end inserts
 	if (frag)
 	{
+		for (var kid = fresh && frag.firstChild; kid; kid = kid.nextSibling)
+		{
+			fresh.push(kid);
+		}
 		_VirtualDom_appendChild(domNode, frag);
 	}
+
+	fresh && fresh.length > 0 && _VirtualDom_staggerEntrance(domNode, fresh);
 
 	return domNode;
 }
@@ -1595,6 +1605,189 @@ function _VirtualDom_applyPatchReorderEndInsertsHelp(endInserts, patch)
 		_VirtualDom_appendChild(frag, _VirtualDom_render(endInserts[i].__entry.__vnode, patch.__eventNode));
 	}
 	return frag;
+}
+
+
+// STAGGERED ENTRANCE
+//
+// A keyed node with the attribute ef-stagger staggers the kids that a patch adds to it.
+// A first render adds nothing through a patch, so what is there from the start, like
+// what a view kept from an earlier load, stays still.
+//
+// Which of the new kids take part is decided here, since only the DOM knows what is on
+// screen: the ones in view of the scrolling ancestor, and --stagger-overscan more on
+// each side. The rest come at once. The delay of each is --stagger-span times the
+// --stagger-easing of its place among them, which the CSS of the node declares and the
+// view never sees. The kids get stagger-state and --stagger-delay on the DOM only, and
+// lose them when the last transition has ended.
+//
+// A kid is measured while it rests, then goes to "init" and to "entered" the way a
+// layer goes to "init" and "entering", so the CSS has to give "init" no transition.
+
+
+function _VirtualDom_staggerEntrance(host, fresh)
+{
+	var config = window.getComputedStyle(host);
+	var span = _VirtualDom_toMilliseconds(config.getPropertyValue('--stagger-span'));
+	var easing = _VirtualDom_toEasing(config.getPropertyValue('--stagger-easing'));
+	var overscan = parseInt(config.getPropertyValue('--stagger-overscan'), 10) || 0;
+
+	var run = _VirtualDom_toStaggeredRun(host, fresh.filter(_VirtualDom_isElement), overscan);
+
+	for (var i = 0; i < run.length; i++)
+	{
+		var progress = run.length > 1 ? i / (run.length - 1) : 0;
+		run[i].style.setProperty('--stagger-delay', Math.round(span * easing(progress) * 10) / 10 + 'ms'); // to a tenth of a millisecond, as the halving is not exact
+		run[i].setAttribute('stagger-state', 'init');
+	}
+
+	if (run.length > 0)
+	{
+		// A call, because a minifier may drop a read of a property.
+		window.getComputedStyle(run[0]).getPropertyValue('opacity');
+	}
+
+	var duration = 0;
+	for (var i = 0; i < run.length; i++)
+	{
+		run[i].setAttribute('stagger-state', 'entered');
+		duration = Math.max(duration, _VirtualDom_toTransitionDuration(run[i]) || 0);
+	}
+
+	duration > 0
+		? setTimeout(function() { _VirtualDom_endStagger(run); }, duration)
+		: _VirtualDom_endStagger(run);
+}
+
+
+function _VirtualDom_endStagger(run)
+{
+	for (var i = 0; i < run.length; i++)
+	{
+		run[i].removeAttribute('stagger-state');
+		run[i].style.removeProperty('--stagger-delay');
+	}
+}
+
+
+function _VirtualDom_isElement(node)
+{
+	return node.nodeType === 1;
+}
+
+
+// the kids in view, and the overscan before and after them, in order. A kid that is
+// past the view ends the measuring, as the kids are in order of their place.
+function _VirtualDom_toStaggeredRun(host, kids, overscan)
+{
+	var port = _VirtualDom_toScrollport(host);
+	var first = -1;
+	var last = -1;
+
+	for (var i = 0; i < kids.length; i++)
+	{
+		var place = _VirtualDom_toPlaceInPort(kids[i], port);
+		if (place > 0)
+		{
+			break;
+		}
+		if (place === 0)
+		{
+			first < 0 && (first = i);
+			last = i;
+		}
+	}
+
+	if (first >= 0)
+	{
+		return kids.slice(Math.max(0, first - overscan), last + overscan + 1);
+	}
+
+	// none in view, but next to what is, so the user is about to scroll to them
+	var before = kids.length > 0 && kids[0].previousElementSibling;
+	var after = kids.length > 0 && kids[kids.length - 1].nextElementSibling;
+	return before && _VirtualDom_toPlaceInPort(before, port) === 0 ? kids.slice(0, overscan)
+		: after && _VirtualDom_toPlaceInPort(after, port) === 0 ? kids.slice(kids.length - overscan)
+		: [];
+}
+
+
+// the first ancestor that scrolls or clips, or else the window
+function _VirtualDom_toScrollport(host)
+{
+	for (var element = host; element && element !== _VirtualDom_doc.documentElement; element = element.parentElement)
+	{
+		var style = window.getComputedStyle(element);
+		if (/auto|scroll|hidden|clip/.test(style.getPropertyValue('overflow-x') + style.getPropertyValue('overflow-y')))
+		{
+			return element.getBoundingClientRect();
+		}
+	}
+	return { top: 0, left: 0, bottom: window.innerHeight, right: window.innerWidth };
+}
+
+
+// -1 before the port, 0 in it, 1 after it
+function _VirtualDom_toPlaceInPort(element, port)
+{
+	var rect = element.getBoundingClientRect();
+	return rect.top >= port.bottom || rect.left >= port.right ? 1
+		: rect.bottom <= port.top || rect.right <= port.left ? -1
+		: 0;
+}
+
+
+// A custom property keeps the text it was written with.
+function _VirtualDom_toMilliseconds(text)
+{
+	var number = parseFloat(text);
+	return isNaN(number) ? 0 : /ms\s*$/.test(text) ? number : number * 1000;
+}
+
+
+var _VirtualDom_namedEasings = {
+	'linear': [0, 0, 1, 1],
+	'ease': [0.25, 0.1, 0.25, 1],
+	'ease-in': [0.42, 0, 1, 1],
+	'ease-out': [0, 0, 0.58, 1],
+	'ease-in-out': [0.42, 0, 0.58, 1]
+};
+
+
+// a function from the progress of the time to the progress of the value, from a CSS
+// easing: a keyword, or cubic-bezier(). Anything else is linear.
+function _VirtualDom_toEasing(text)
+{
+	var name = text.trim();
+	var match = /^cubic-bezier\(([^)]*)\)$/.exec(name);
+	var points = match ? match[1].split(',').map(parseFloat) : _VirtualDom_namedEasings[name];
+	var valid = points && points.length === 4 && points.every(isFinite) && points[0] >= 0 && points[0] <= 1 && points[2] >= 0 && points[2] <= 1;
+	var curve = valid ? points : _VirtualDom_namedEasings['linear'];
+
+	return function(progress)
+	{
+		if (progress <= 0 || progress >= 1)
+		{
+			return Math.max(0, Math.min(1, progress));
+		}
+		// x(t) rises with t, so find the t of this progress by halving
+		var low = 0;
+		var high = 1;
+		var t = progress;
+		for (var i = 0; i < 24; i++)
+		{
+			t = (low + high) / 2;
+			_VirtualDom_bezierAt(t, curve[0], curve[2]) < progress ? (low = t) : (high = t);
+		}
+		return _VirtualDom_bezierAt(t, curve[1], curve[3]);
+	};
+}
+
+
+function _VirtualDom_bezierAt(t, a, b)
+{
+	var u = 1 - t;
+	return 3 * u * u * t * a + 3 * u * t * t * b + t * t * t;
 }
 
 

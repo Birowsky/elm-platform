@@ -35,6 +35,17 @@ The Elm compiler and patched core libraries, released to apps as one npm package
 - **Elm notices nothing about a changed package.** `artifacts.dat` is keyed on dependency versions and `elm-stuff` on the mtime of `elm.json`. The wrapper drops a project's `elm-stuff` when its stamp changes (`lib/project.js`): the release, or with `ELM_PLATFORM_DEV` a hash of the files. A checkout's packages change under one version, so they get a home of their own, with the same treatment (`lib/home.js`), and never touch `~/.elm`.
 - **`~/.elm` is shared with stock Elm, so its compiled files have to stay interchangeable.** Today they are: a stock compile in a home our compiler wrote to gives the same bytes as in a home only stock has seen. A compiler change that alters generated code or the format of `artifacts.dat` has to rename that file in the same commit (`Elm/Details.hs`), so that the two compilers stop reading each other's, and packages compiled before the change get rebuilt. The byte comparison under Releasing is how you find out.
 
+## Adding a feature to a kernel
+
+The virtual DOM runs on every view update of every app, so a feature has to cost nothing for the views that don't use it.
+
+- **Pay only when the view opted in, and check in order of price.** Put the feature behind a gate that is already on the path (a patch with inserts, a node that is keyed), then the opt-in (an attribute or a flag on the node the view wrote), and only then anything that costs: layout reads, computed style, timers. A first render, and every patch type the feature doesn't concern, never reach it.
+- **Opt in on the node, in the view's own words.** An attribute or a constructor, as `keyedLayers` is. No global switch, and no new node types.
+- **Let CSS own the design, and the kernel what CSS can't do.** Durations, spacing curves and the like are custom properties on the opted-in node, written in the app's SCSS. The kernel measures, counts and does the maths that needs them, and reads those properties once per patch, from a style flush it needs anyway.
+- **Bound the work by what is on screen, not by the size of the data.** Stop measuring at the first miss.
+- **State the kernel writes is DOM-only and temporary.** It never goes in a vnode, so no diff sees it, and it is removed when the feature is done, so nothing outlives it.
+- **Use plain `elm_*` properties and existing kernel fields** for anything new, so no field changes its letter.
+
 ## Tests
 
 A change to a kernel gets a test beside it, on the real kernel in jsdom, and when it depends on the compiler or a browser, one in `e2e/`. A skipped view leaves no trace in the DOM, so `e2e/apps/lazy` shows how to observe one: views read a JavaScript object that the test changes behind Elm's back.
