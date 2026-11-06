@@ -1,6 +1,6 @@
 {
   "name": "@birowsky/elm-platform-linux_x64",
-  "version": "0.19.3-6",
+  "version": "0.19.3-7",
   "description": "The Elm compiler binary for Linux on x64. Installed by @birowsky/elm-platform. Unofficial, not affiliated with the Elm project.",
   "license": "BSD-3-Clause",
   "repository": {
