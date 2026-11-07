@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "Not a package: it tells Node that the panel's scripts are ES modules, as the browser loads them, for the tests.",
+  "type": "module"
+}

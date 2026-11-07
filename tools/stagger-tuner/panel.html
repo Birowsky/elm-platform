@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stagger Tuner</title>
+  <link rel="stylesheet" href="panel.css">
+  <script src="stagger.js"></script>
+  <script type="module" src="panel.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="transport">
+      <button id="loop" class="loop" aria-pressed="false" title="Loop the entrance of the list (Space)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path class="play" d="M4 2.5v11l9-5.5z"/><path class="pause" d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>
+        <span>Loop</span>
+      </button>
+      <button id="once" title="Play the entrance once">Once</button>
+      <div class="segmented" id="speed" role="group" aria-label="Speed" title="Slow motion slows the delays too">
+        <button data-speed="1">1×</button>
+        <button data-speed="0.5">½×</button>
+        <button data-speed="0.25">¼×</button>
+        <button data-speed="0.1">⅒×</button>
+      </div>
+    </div>
+    <p id="status" class="status"></p>
+    <p id="reduced-motion" class="warning" hidden>The system asks for reduced motion, and the page's CSS may switch these transitions off for it.</p>
+  </header>
+
+  <main>
+    <section class="block">
+      <h2>Lists on this page</h2>
+      <ul id="lists" class="lists"></ul>
+      <p id="no-lists" class="empty" hidden>No list with <code>ef-stagger</code> here yet. One shows up as soon as the page has it.</p>
+    </section>
+
+    <div id="tuner" hidden>
+      <section class="block">
+        <div class="field" data-field="kids" title="How many of the kids a replay takes. All of them is what the kernel would take if the list arrived now.">
+          <label for="kids">Kids</label>
+          <input type="range" id="kids" min="1" max="1" step="1">
+          <output id="kids-value" class="readout"></output>
+        </div>
+        <div class="field" data-field="pause" title="The rest between two runs of the loop">
+          <label for="pause">Pause</label>
+          <input type="range" id="pause" min="0" max="3000" step="50">
+          <output id="pause-value" class="readout"></output>
+        </div>
+        <svg id="timeline" class="timeline" role="img" aria-label="When each kid waits and moves"></svg>
+        <p id="run-summary" class="note"></p>
+      </section>
+
+      <div class="editors">
+        <nav class="tabs" role="tablist">
+          <button role="tab" data-tab="spread">Spread <small>when each kid starts</small></button>
+          <button role="tab" data-tab="motion">Motion <small>how each kid moves</small></button>
+        </nav>
+
+        <div class="panes">
+          <section class="pane" data-pane="spread">
+            <h3>Spread <small>when each kid starts</small></h3>
+            <svg id="spread-curve" class="curve" role="group" aria-label="--stagger-easing: the place of a kid among them against its delay"></svg>
+            <div class="curve-field" data-field="easing">
+              <input class="curve-text" spellcheck="false" aria-label="--stagger-easing">
+              <select class="presets" aria-label="Presets"></select>
+              <button class="revert" hidden>↺</button>
+            </div>
+            <div class="field" data-field="span" title="--stagger-span: the most the delay of the last kid can be">
+              <label for="span">Span</label>
+              <input type="range" id="span" min="0" max="4000" step="10" data-max="4000">
+              <span class="value"><input type="number" min="0" step="10" aria-label="Span in milliseconds"><span class="unit">ms</span></span>
+              <button class="revert" hidden>↺</button>
+            </div>
+            <div class="field" data-field="step" title="--stagger-step: the gap between kids, so that a few spread over less than the span. 0 for none.">
+              <label for="step">Step</label>
+              <input type="range" id="step" min="0" max="400" step="5" data-max="400">
+              <span class="value"><input type="number" min="0" step="5" aria-label="Step in milliseconds"><span class="unit">ms</span></span>
+              <button class="revert" hidden>↺</button>
+            </div>
+            <div class="field" data-field="overscan" title="--stagger-overscan: kids past the visible ones on each side that are staggered too">
+              <label for="overscan">Overscan</label>
+              <input type="range" id="overscan" min="0" max="12" step="1" data-max="12">
+              <span class="value"><input type="number" min="0" step="1" aria-label="Overscan in kids"><span class="unit">kids</span></span>
+              <button class="revert" hidden>↺</button>
+            </div>
+            <p id="spread-note" class="note"></p>
+          </section>
+
+          <section class="pane" data-pane="motion">
+            <h3>Motion <small>how each kid moves</small></h3>
+            <svg id="motion-curve" class="curve" role="group" aria-label="transition-timing-function: the time of a kid's move against how far it has come"></svg>
+            <div class="curve-field" data-field="timing">
+              <input class="curve-text" spellcheck="false" aria-label="transition-timing-function">
+              <select class="presets" aria-label="Presets"></select>
+              <button class="revert" hidden>↺</button>
+            </div>
+            <div class="field" data-field="duration" title="transition-duration of each kid">
+              <label for="duration">Duration</label>
+              <input type="range" id="duration" min="0" max="4000" step="10" data-max="4000">
+              <span class="value"><input type="number" min="0" step="10" aria-label="Duration in milliseconds"><span class="unit">ms</span></span>
+              <button class="revert" hidden>↺</button>
+            </div>
+            <p id="motion-note" class="note"></p>
+            <div class="pose-field" data-field="pose">
+              <label for="pose">Start pose <small>where a kid comes from: <code>[stagger-state="init"]</code></small></label>
+              <div class="pose-box">
+                <pre class="pose-colors" aria-hidden="true"></pre>
+                <textarea id="pose" rows="3" spellcheck="false" placeholder="opacity: 0;&#10;transform: translateY(20%);" title="⌘↑ ⌘↓ or ⌥↑ ⌥↓ step the number at the caret by 1 in %, px or deg, and by 0.01 with no unit. ⇧↑ ⇧↓ step ten times as far."></textarea>
+              </div>
+              <button class="revert" hidden>↺</button>
+            </div>
+            <p id="pose-note" class="note"></p>
+          </section>
+        </div>
+      </div>
+
+      <section class="block css">
+        <header>
+          <h2>CSS <small id="css-note"></small></h2>
+          <button id="reset" title="Back to the page's own CSS">Reset</button>
+          <button id="copy">Copy</button>
+          <button id="save" class="accent" title="Write what is tuned into the app's stylesheet. The first time, pick the folder of the app's sources.">Save</button>
+        </header>
+        <pre id="css"></pre>
+        <p id="save-note" class="note"></p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

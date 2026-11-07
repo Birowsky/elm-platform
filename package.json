@@ -7,7 +7,7 @@
     "e2e"
   ],
   "scripts": {
-    "test": "npm test -w packages/elm/virtual-dom/tests && node --test npm/elm-platform/tests/*.test.js",
+    "test": "npm test -w packages/elm/virtual-dom/tests && node --test npm/elm-platform/tests/*.test.js tools/stagger-tuner/tests/*.test.js",
     "e2e": "npm test -w e2e",
     "build:compiler": "node scripts/build-compiler.js"
   },

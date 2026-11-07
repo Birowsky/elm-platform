@@ -9,6 +9,7 @@ The Elm compiler and patched core libraries, released to apps as one npm package
 - `npm/elm-platform/`: the main npm package. `bin/elm.js` is what apps run as `elm`. Not a workspace, because its optional dependencies are the binary packages of a release that isn't published yet.
 - `npm/elm-platform-<platform>/`: one package per platform, holding the compiler binary, which git ignores.
 - `e2e/`: stands in for an app: packs and installs the package, compiles `apps/*` with it, runs them in Chromium and WebKit.
+- `tools/stagger-tuner/`: a Chrome extension that loops a list's staggered entrance on the page and tunes its curves and durations live. Not released; load it unpacked.
 
 ## Commands
 
@@ -16,13 +17,14 @@ The Elm compiler and patched core libraries, released to apps as one npm package
 |---|---|
 | Install | `npm ci` |
 | Build the compiler into its binary package, which the tests below use | `npm run build:compiler` |
-| Kernel and wrapper tests | `npm test` |
+| Kernel, wrapper and stagger tuner tests | `npm test` |
 | E2E | `npm run e2e` (first: `npx playwright install chromium webkit`) |
 | Set a release's version on every package, and on each patched package that changed | `node scripts/set-version.js 0.19.3-N` |
 | Write the `docs.json` of each patched package | `node scripts/build-docs.js` |
 | Build and test every platform without publishing | `gh workflow run release.yaml` |
 | Compiler tests | `cd compiler && cabal test` |
 | Try a checkout in an app, unreleased | `ELM_PLATFORM_DEV=<this repo> npm run serve:web -w frontend`, from the app |
+| Tune a stagger by eye | load `tools/stagger-tuner` unpacked in `chrome://extensions`, then its toolbar button |
 
 ## Rules the code can't show
 
@@ -45,6 +47,36 @@ The virtual DOM runs on every view update of every app, so a feature has to cost
 - **Bound the work by what is on screen, not by the size of the data.** Stop measuring at the first miss.
 - **State the kernel writes is DOM-only and temporary.** It never goes in a vnode, so no diff sees it, and it is removed when the feature is done, so nothing outlives it.
 - **Use plain `elm_*` properties and existing kernel fields** for anything new, so no field changes its letter.
+
+## The stagger tuner
+
+`tools/stagger-tuner/` replays a list's staggered entrance on a live page, as the kernel would run it if the list arrived now, and tunes its CSS while it plays. Its pieces:
+
+- `panel.html` and `panel.js`: the side panel, with `curve-editor.js`, `timeline.js` and `pose-editor.js`, and for Save, `source-folder.js`, which finds the app's stylesheet in a folder picked once, and `scss-block.js`, which rewrites the block in it.
+- `content.js`: the page side, which the panel injects into the tab's isolated world, after `stagger.js`, and talks to over a port. It leaves nothing behind when the panel closes.
+- `stagger.js`: the kernel's arithmetic, a classic script that both sides load.
+
+The page side never writes into the `<body>`, which Elm owns, and never adds a child to an app's list, since an endless list fetches its next page when its children change. What is tuned is a `<style>` in `<html>`, and the motion is read from a stand-in list there.
+
+A replay is a copy of the kernel, so a change to one of these in `VirtualDom.js` changes its copy in the same commit:
+
+| Kernel | Tuner | What they agree on |
+|---|---|---|
+| `_VirtualDom_staggerEntrance` | `stagger`, `toRun` (`content.js`) | the `--stagger-*` read from the list, and what each kid gets: `--stagger-delay` and `stagger-state="init"`, a style flush, then `entered` |
+| `_VirtualDom_endStagger`, `_VirtualDom_toTransitionDuration` | `settle`, `endOf` (`content.js`) | both are removed when the longest transition ends, its delay included |
+| `_VirtualDom_toStaggeredRun`, `_VirtualDom_toScrollport`, `_VirtualDom_toPlaceInPort` | `toStaggeredRun`, `toScrollport`, `toPlaceInPort` (`content.js`) | which kids take part: the ones in view of the first ancestor that scrolls or clips and the overscan on each side, or with none in view, the overscan next to it |
+| `total` and each delay in `_VirtualDom_staggerEntrance` | `toSpread`, `toDelays` (`stagger.js`) | a step spreads a few kids over less than the span, and a delay is rounded to a tenth of a millisecond |
+| `_VirtualDom_toEasing`, `_VirtualDom_namedEasings`, `_VirtualDom_bezierAt` | `toCurve`, `toEasing`, `namedCurves` (`stagger.js`) | which easings the kernel reads, anything else being linear, and the 24 halvings that solve one |
+| `_VirtualDom_toMilliseconds` | `toMilliseconds` (`stagger.js`) | a time in `ms` or `s` |
+
+The rest of the tuner leans on the kernel without copying it:
+
+- **The names.** `ef-stagger` and the block name it holds, `stagger-state` with `init` and `entered`, and `--stagger-span`, `--stagger-step`, `--stagger-easing`, `--stagger-overscan` and `--stagger-delay`. `content.js` reads and writes them, `panel.js` writes them into the CSS it shows, `scss-block.js` into the app's stylesheet, and the tuner's README explains them.
+- **What counts as new.** The kernel staggers the kids that a patch inserts, never one that it moves (`_VirtualDom_applyPatchReorder`). A replay takes every kid of the list as new.
+- **Runs of the kernel.** `notice` in `content.js` hears of one as kids turning `entered` outside a replay, which holds while the kernel sets `init` and `entered` in one go.
+- **What the panel tells the person tuning.** `toSpreadNote` says which of span and step decides the spread, and `toEasingNote` that an easing the kernel can't read spreads the kids evenly.
+
+`tests/replay.test.js` lets the real kernel and the tuner stagger the same lists in jsdom, and expects the same kids in the same states with the same delays, so `npm test` fails until the copy follows. Nothing tests the names or the panel's words: search the tuner for them.
 
 ## Tests
 
