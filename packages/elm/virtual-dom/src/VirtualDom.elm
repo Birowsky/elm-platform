@@ -7,6 +7,7 @@ module VirtualDom exposing
   , keyedNode, keyedNodeNS, keyedLayers
   , lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
   , lazyShallow, lazyShallowDeep
+  , memoShallowDeep
   )
 
 {-| API to the core diffing algorithm. Can serve as a foundation for libraries
@@ -30,6 +31,9 @@ that expose more helper functions for HTML or SVG.
 # Lazy Nodes
 @docs lazy, lazy2, lazy3, lazy4, lazy5, lazy6, lazy7, lazy8
 @docs lazyShallow, lazyShallowDeep
+
+# Lazy Values
+@docs memoShallowDeep
 
 -}
 
@@ -371,6 +375,27 @@ the second argument.
 lazyShallowDeep : (a -> b -> Node msg) -> a -> b -> Node msg
 lazyShallowDeep =
   Elm.Kernel.VirtualDom.lazyShallowDeep
+
+
+{-| Same as `lazyShallowDeep`, for any value, not only a view. `memoShallowDeep f a b`
+is `f a b`, except that it gives back the last result of `f` without calling it again
+when the fields of `a` are the same by reference and `b` is equal with `(==)`, so a
+value that is costly to derive costs only when what it comes from changes.
+
+    drawnPositions =
+        memoShallowDeep toDrawnPositions model.layout model.viewport
+
+`f` keeps one result, its last, so pass a function defined at the top level of a
+module: a lambda or a partial application is a new function on every call, and finds
+no result to give back. Two calls that pass the same `f` different arguments take
+turns replacing its result.
+
+`(==)` crashes when it reaches two different functions, so keep functions out of
+the second argument.
+-}
+memoShallowDeep : (a -> b -> c) -> a -> b -> c
+memoShallowDeep =
+  Elm.Kernel.VirtualDom.memoShallowDeep
 
 
 

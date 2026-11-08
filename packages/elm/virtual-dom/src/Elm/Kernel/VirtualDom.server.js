@@ -154,6 +154,11 @@ var _VirtualDom_lazyShallowDeep = F3(function(fn, shallow, deep)
 	return A2(fn, shallow, deep);
 });
 
+var _VirtualDom_memoShallowDeep = F3(function(fn, shallow, deep)
+{
+	return A2(fn, shallow, deep);
+});
+
 
 // FACTS
 

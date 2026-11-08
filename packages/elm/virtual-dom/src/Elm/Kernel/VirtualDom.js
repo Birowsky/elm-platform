@@ -259,6 +259,28 @@ var _VirtualDom_lazyShallowDeep = F3(function(func, shallow, deep)
 	return thunk;
 });
 
+// One result per function, its last, with the arguments it came from. Weakly
+// held, so a function the program lets go of takes its result with it.
+var _VirtualDom_memos = new WeakMap();
+
+var _VirtualDom_memoShallowDeep = F3(function(func, shallow, deep)
+{
+	var refs = _VirtualDom_toShallowRefs(func, shallow);
+	var memo = _VirtualDom_memos.get(func);
+	if (memo && _VirtualDom_isSameRefs(memo.refs, refs) && __Utils_eq(memo.deep, deep))
+	{
+		return memo.value;
+	}
+	var value = A2(func, shallow, deep);
+	_VirtualDom_memos.set(func, { refs: refs, deep: deep, value: value });
+	return value;
+});
+
+function _VirtualDom_isSameRefs(xRefs, yRefs)
+{
+	return xRefs.length === yRefs.length && xRefs.every(function(ref, i) { return ref === yRefs[i]; });
+}
+
 function _VirtualDom_toShallowRefs(func, value)
 {
 	return [func].concat(_VirtualDom_isPlainObject(value)

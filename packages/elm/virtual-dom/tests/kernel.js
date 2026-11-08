@@ -12,7 +12,7 @@ const KERNEL = path.join(__dirname, '..', 'src', 'Elm', 'Kernel', 'VirtualDom.js
 
 const EXPORTS = [
   '_VirtualDom_node', '_VirtualDom_keyedNode', '_VirtualDom_keyedLayers', '_VirtualDom_text', '_VirtualDom_attribute',
-  '_VirtualDom_map', '_VirtualDom_lazy', '_VirtualDom_lazyShallow', '_VirtualDom_lazyShallowDeep',
+  '_VirtualDom_map', '_VirtualDom_lazy', '_VirtualDom_lazyShallow', '_VirtualDom_lazyShallowDeep', '_VirtualDom_memoShallowDeep',
   '_VirtualDom_render', '_VirtualDom_diff', '_VirtualDom_applyPatches',
 ];
 
@@ -73,6 +73,7 @@ function load() {
     lazy: (fn, arg) => k._VirtualDom_lazy.f(fn, arg),
     lazyShallow: (fn, record) => k._VirtualDom_lazyShallow.f(fn, record),
     lazyShallowDeep: (fn, record, deep) => k._VirtualDom_lazyShallowDeep.f(fn, record, deep),
+    memoShallowDeep: (fn, shallow, deep) => k._VirtualDom_memoShallowDeep.f(fn, shallow, deep),
     render: vnode => k._VirtualDom_render(vnode, function () {}),
     diff: k._VirtualDom_diff,
     applyPatches: (dom, old, patches) => k._VirtualDom_applyPatches(dom, old, patches, function () {}),

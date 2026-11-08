@@ -174,6 +174,15 @@ view model =
             { external = model.external
             }
             { handler = model.handler }
+        , span [ id "memo-stamp" ]
+            [ text
+                (VirtualDom.memoShallowDeep toMemoStamp
+                    { external = model.external
+                    , field = model.field
+                    }
+                    model.deep
+                )
+            ]
         , viewPosition model
         , Html.Keyed.ul [ id "keyed" ] (List.map viewKeyedKid model.keys)
         , Html.map Mapped
@@ -235,6 +244,13 @@ viewHandler record { handler } =
         [ span [ id "handler-stamp" ] [ text (toStamp record.external) ]
         , span [ id "handler-result" ] [ text (String.fromInt (handler 1)) ]
         ]
+
+
+{-| Not a view: the plain span around it runs on every update, so only the memo can keep an old stamp.
+-}
+toMemoStamp : { external : Value, field : Int } -> Deep -> String
+toMemoStamp record _ =
+    toStamp record.external
 
 
 viewPosition : Model -> Html Msg

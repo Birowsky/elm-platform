@@ -104,6 +104,33 @@ import { built } from '../paths.js'
       })
     })
 
+    test.describe('memoShallowDeep', () => {
+      test('gives back the last result when nothing changed', async ({ page }) => {
+        await setStamp(page, 1)
+        await tick(page)
+        await expect(page.locator('#memo-stamp')).toHaveText('0')
+      })
+
+      test('gives back the last result when the second argument is rebuilt but equal', async ({ page }) => {
+        await setStamp(page, 1)
+        await send(page, 'new-equal-deep')
+        await tick(page)
+        await expect(page.locator('#memo-stamp')).toHaveText('0')
+      })
+
+      test('calls the function when a field of the record changes', async ({ page }) => {
+        await setStamp(page, 1)
+        await send(page, 'change-field')
+        await expect(page.locator('#memo-stamp')).toHaveText('1')
+      })
+
+      test('calls the function when the second argument changes', async ({ page }) => {
+        await setStamp(page, 1)
+        await send(page, 'change-deep')
+        await expect(page.locator('#memo-stamp')).toHaveText('1')
+      })
+    })
+
     test('the lazy nodes swap with each other and with plain nodes in the same position', async ({ page }) => {
       const position = page.locator('#position')
       await expect(position).toHaveText('lazy 0')
